@@ -1,23 +1,35 @@
 {
     "mcpServers": {
         "playwright": {
-            "command": "npx",
+            "command": "C:\\Program Files\\nodejs\\npx.cmd",
             "args": [
-                "@playwright/mcp@latest"
+                "@playwright/mcp"
             ]
         },
         "airbnb": {
-            "command": "npx",
+            "command": "C:\\Program Files\\nodejs\\npx.cmd",
             "args": [
                 "@openbnb/mcp-server-airbnb"
             ]
         },
         "duckduckgo-search": {
-            "command": "npx",
+            "command": "C:\\Program Files\\nodejs\\npx.cmd",
             "args": [
                 "-y",
                 "duckduckgo-mcp-server"
             ]
+        },
+        "tavily-mcp": {
+            "command": "C:\\Program Files\\nodejs\\npx.cmd",
+            "args": [
+                "-y", 
+                "tavily-mcp@0.1.4"
+            ],
+            "env": {
+                "TAVILY_API_KEY": "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"
+            },
+            "disabled": false,
+            "autoApprove": []
         }
     }
 }
