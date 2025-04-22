@@ -17,7 +17,7 @@ async def run_memory_chat():
     """Run a chat using MCPAgent's built-in conversation memory."""
     # Load environmental variables for API keys
     load_dotenv()
-    os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY")
+    os.environ["GROQ_API_KEY"] = os.getenv("GROQ_API_KEY")      # type: ignore
 
     # Config file path - change this to your config file
     config_file = "browser_mcp.json"
