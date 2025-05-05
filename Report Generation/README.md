@@ -5,7 +5,7 @@ A simple tool that generates comprehensive, well-structured reports on any topic
 ## Features
 
 - Automatic web research using Tavily API
-- LLM-powered report planning and writing using llama-3.3-70b
+- LLM-powered report planning and writing using Groq's llama3-70b model
 - Structured report with introduction, multiple sections, and conclusion
 - Markdown formatting for easy reading and further editing
 
@@ -20,7 +20,7 @@ A simple tool that generates comprehensive, well-structured reports on any topic
 
 - Python 3.8+
 - Tavily API key
-- NVIDIA API key for llama-3.3-70b access
+- Groq API key for llama3-70b access
 
 ## Installation
 
@@ -36,18 +36,18 @@ pip install -r requirements.txt
 ```bash
 # On Linux/Mac
 export TAVILY_API_KEY="your_tavily_api_key"
-export NVIDIA_API_KEY="your_nvidia_api_key"
+export GROQ_API_KEY="your_groq_api_key"
 
 # On Windows
 set TAVILY_API_KEY=your_tavily_api_key
-set NVIDIA_API_KEY=your_nvidia_api_key
+set GROQ_API_KEY=your_groq_api_key
 ```
 
 Alternatively, create a `.env` file in the project root:
 
 ```
 TAVILY_API_KEY=your_tavily_api_key
-NVIDIA_API_KEY=your_nvidia_api_key
+GROQ_API_KEY=your_groq_api_key
 ```
 
 ## Usage
@@ -71,8 +71,11 @@ python main.py --topic "Artificial Intelligence in Healthcare" --queries 5 --tem
 Available options:
 - `--topic`: Report topic (if not provided, will prompt for input)
 - `--queries`: Number of search queries to generate (default: 3)
-- `--model`: LLM model to use (default: meta/llama-3.3-70b-instruct)
+- `--model`: LLM model to use (default: llama3-70b-8192)
 - `--temperature`: Temperature setting for LLM (default: 0.2)
+- `--timeout`: Timeout in seconds for LLM API calls (default: 180)
+- `--debug`: Enable debug mode with more detailed error information
+- `--output-dir`: Directory to save generated reports (default: examples)
 
 The generated report will be saved as a Markdown file named after your topic.
 
@@ -87,4 +90,4 @@ This will:
 2. Generate a structured report outline
 3. Write detailed content for each section 
 4. Compile a final report with an introduction and conclusion
-5. Save the report as `quantum_computing_basics_report.md`
+5. Save the report as `quantum_computing_basics_report.md` 

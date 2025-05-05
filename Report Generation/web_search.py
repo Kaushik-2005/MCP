@@ -12,13 +12,16 @@ async def search_web(queries, tavily_client):
     Returns:
         list: List of search results, one per query
     """
+    # Limit the number of queries to reduce token usage
+    limited_queries = queries[:3]  # Only use the first 3 queries
+    
     search_tasks = []
-    for query in queries:
+    for query in limited_queries:
         search_tasks.append(
             tavily_client.search(
                 query,
-                max_results=5,
-                include_raw_content=True,
+                max_results=3,  # Reduced from 5 to 3
+                include_raw_content=False,  # Don't include raw content to save tokens
                 topic="general"
             )
         )
@@ -27,7 +30,7 @@ async def search_web(queries, tavily_client):
     search_results = await asyncio.gather(*search_tasks)
     return search_results
 
-def format_sources(search_results, max_tokens_per_source=1000):
+def format_sources(search_results, max_tokens_per_source=300):
     """
     Format search results into a readable text for the LLM.
     
@@ -46,22 +49,31 @@ def format_sources(search_results, max_tokens_per_source=1000):
             if source['url'] not in unique_sources:
                 unique_sources[source['url']] = source
     
+    # Limit the number of sources to reduce token usage
+    limited_sources = list(unique_sources.values())[:5]  # Only use the first 5 sources
+    
     # Format output
     formatted_text = "Sources:\n\n"
-    for i, source in enumerate(unique_sources.values(), 1):
+    for i, source in enumerate(limited_sources, 1):
         formatted_text += f"Source {i}:\n"
         formatted_text += f"Title: {source['title']}\n"
         formatted_text += f"URL: {source['url']}\n"
-        formatted_text += f"Content: {source['content']}\n\n"
         
-        # Include raw content (truncated)
-        raw_content = source.get('raw_content', '')
-        if raw_content:
-            # Approximate 4 chars per token
-            char_limit = max_tokens_per_source * 4
-            if len(raw_content) > char_limit:
-                raw_content = raw_content[:char_limit] + "... [truncated]"
-            formatted_text += f"Full content: {raw_content}\n\n"
+        # Truncate content to reduce tokens
+        content = source.get('content', '')
+        char_limit = max_tokens_per_source * 4  # Approx 4 chars per token
+        if len(content) > char_limit:
+            content = content[:char_limit] + "... [truncated]"
+        formatted_text += f"Content: {content}\n\n"
+        
+        # Don't include raw content to save tokens
+        # raw_content = source.get('raw_content', '')
+        # if raw_content:
+        #     # Approximate 4 chars per token
+        #     char_limit = max_tokens_per_source * 4
+        #     if len(raw_content) > char_limit:
+        #         raw_content = raw_content[:char_limit] + "... [truncated]"
+        #     formatted_text += f"Full content: {raw_content}\n\n"
             
     return formatted_text
 

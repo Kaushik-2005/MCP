@@ -1,6 +1,5 @@
 import os
 import asyncio
-from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from langchain_groq import ChatGroq
 from tavily import AsyncTavilyClient
 from report_generator import generate_report
@@ -8,14 +7,21 @@ import time
 import argparse
 from dotenv import load_dotenv
 
+# Load environment variables
+print("Loading environment variables...")
 load_dotenv()
+
+# Debug print to check if environment variables are loaded
+print(f"GROQ_API_KEY present: {'GROQ_API_KEY' in os.environ}")
+print(f"TAVILY_API_KEY present: {'TAVILY_API_KEY' in os.environ}")
+print(f"First few characters of GROQ_API_KEY: {os.getenv('GROQ_API_KEY')[:5] if os.getenv('GROQ_API_KEY') else 'Not found'}")
 
 async def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Generate a structured report on a given topic.')
     parser.add_argument('--topic', type=str, help='Report topic (if not provided, will prompt for input)')
     parser.add_argument('--queries', type=int, default=3, help='Number of search queries to generate per topic (default: 3)')
-    parser.add_argument('--model', type=str, default="meta/llama-3.3-70b-instruct", help='LLM model to use (default: meta/llama-3.3-70b-instruct)')
+    parser.add_argument('--model', type=str, default="llama3-70b-8192", help='Groq model to use (default: llama3-70b-8192)')
     parser.add_argument('--temperature', type=float, default=0.2, help='Temperature for LLM (default: 0.2)')
     parser.add_argument('--timeout', type=int, default=180, help='Timeout in seconds for LLM API calls (default: 180)')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode with more detailed error information')
@@ -24,21 +30,23 @@ async def main():
     
     # Get API keys from environment variables
     tavily_api_key = os.getenv("TAVILY_API_KEY")
-    nvidia_api_key = os.getenv("NVIDIA_API_KEY")
     groq_api_key = os.getenv("GROQ_API_KEY")
     
     if not tavily_api_key:
         raise ValueError("TAVILY_API_KEY must be set as an environment variable")
     
-    if not nvidia_api_key:
-        raise ValueError("NVIDIA_API_KEY must be set as an environment variable")
+    if not groq_api_key:
+        raise ValueError("GROQ_API_KEY must be set as an environment variable")
+    
+    # Print model information
+    print(f"Using Groq model: {args.model}")
     
     # Initialize clients
     print("Initializing API clients...")
     try:
         tavily_client = AsyncTavilyClient(api_key=tavily_api_key)
         llm = ChatGroq(
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            model=args.model,
             temperature=args.temperature,
             api_key=groq_api_key
         )
