@@ -1,0 +1,1 @@
+"""ResearchOps MCP package."""

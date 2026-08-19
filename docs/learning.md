@@ -59,6 +59,12 @@ Simple example:
 - The server queries the configured paper source, normalizes the results, and returns a small structured list.
 - If the user later wants details for one result, the model can call `get_paper` or read `paper://{paper_id}` once that resource exists.
 
+#### Role in our project
+
+- MCP gives ResearchOps a model-facing layer for paper search, reading-list operations, and later prompts/resources.
+- Day 1 decides where boundaries belong before code is written.
+- The project uses explicit identifiers and bounded tool outputs because stateless MCP works best when state is represented clearly instead of hidden in a session.
+
 #### Why it is designed this way
 
 - Separation of concerns: APIs remain business interfaces; MCP is the model-facing contract.
@@ -87,6 +93,13 @@ Primitive boundary summary for ResearchOps:
 - Agent framework:
   - Useful for orchestration.
   - Not a substitute for the protocol boundary that MCP defines.
+
+#### Failure modes
+
+- A client assumes an older session-style MCP flow and fails against a newer stateless server.
+- The server exposes tools without narrow descriptions or schemas, causing poor model tool selection.
+- Application state is hidden instead of being represented by explicit IDs, making later requests fragile.
+- Tool outputs are too large, which wastes context or causes downstream confusion.
 
 #### Common mistakes
 
@@ -117,10 +130,22 @@ MCP is a standard way for AI hosts to discover and use external capabilities suc
 #### Questions for revision
 
 1. Why is MCP not a replacement for ordinary APIs?
-2. What is the difference between the host and the client in MCP?
-3. Why did the newer spec move away from protocol-level sessions?
-4. When should ResearchOps use a tool instead of a resource?
+   Answer: MCP is the model-facing protocol layer, while ordinary APIs remain the business or data interfaces underneath. MCP standardizes discovery and use of capabilities for AI hosts; it does not replace backend APIs.
 
+2. What is the difference between the host and the client?
+   Answer: The host owns user interaction, approval, and policy. The client is the MCP-speaking component inside the host that discovers capabilities, sends requests, and receives results from one or more servers.
+
+3. Why did the newer spec move away from protocol-level sessions?
+   Answer: Stateless requests simplify remote deployment, horizontal scaling, and compatibility because each request can be handled independently without hidden transport session state.
+
+4. When should ResearchOps use a tool instead of a resource?
+   Answer: Use a tool when the server needs to perform an operation now using arguments. Use a resource when the system should expose stable, identifiable context that can be read repeatedly.
+
+5. Why does stateless MCP still allow reading lists and notes?
+   Answer: Because the state lives in application storage, such as the database, and later requests refer to that state through explicit identifiers like `list_id` or `note_id`.
+
+6. Why is host approval not enough on its own?
+   Answer: Host approval only decides whether an action should be allowed from the user-experience side. The server must still enforce authorization so callers cannot access or modify data they do not own.
 
 #### Active recall review
 
@@ -156,6 +181,7 @@ MCP is a standard way for AI hosts to discover and use external capabilities suc
 
 11. Question: What is the difference between host approval and server authorization?
     Answer: Host approval asks whether an action should proceed from the user-consent and policy side. Server authorization checks whether the caller is actually allowed to perform that action on the targeted data.
+
 #### References
 
 - MCP specification and discovery docs: https://modelcontextprotocol.io/specification/latest
@@ -165,6 +191,131 @@ MCP is a standard way for AI hosts to discover and use external capabilities suc
 - OWASP MCP Security Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/MCP_Security_Cheat_Sheet.html
 
 ### Day 2: First Local MCP Server
+
+#### Learning objectives
+
+- Understand the current official MCP Python SDK server API for local development.
+- Understand server name, version, metadata, and instructions.
+- Understand tool registration with inferred schemas from Python type hints.
+- Understand why stdio requires strict separation between protocol output and logs.
+- Distinguish MCP/protocol errors from tool-level execution errors.
+
+#### Core concepts
+
+- The current official Python SDK v2 uses `MCPServer`, which replaces the older `FastMCP` name used in earlier examples.
+- `@server.tool()` registers a Python function as a tool and derives its input schema from type hints and its description from the docstring.
+- Local MCP development typically uses stdio transport, where the client spawns the server as a subprocess and exchanges protocol messages over `stdin` and `stdout`.
+- Structured tool results can be returned directly from Python dictionaries when the SDK can infer the schema.
+- Tool failures are surfaced to the client as tool results marked with `is_error=True`, rather than always raising protocol-level exceptions.
+
+#### How it works
+
+1. Create an `MCPServer` with a stable name, version, and instructions.
+2. Register tools with `@server.tool()`.
+3. Run the server locally over stdio.
+4. A client connects, lists tools, reads the generated schemas, and calls tools with validated arguments.
+5. The SDK returns structured content for successful tool calls and error results for tool-level failures.
+
+#### Example
+
+- `health_check` returns a simple readiness payload.
+- `search_papers` searches mock paper data by query and returns bounded results.
+- `get_paper` returns one paper by stable identifier or an error if the identifier is unknown.
+- MCP Inspector can connect to the local stdio server, list the registered tools, and invoke them interactively.
+
+#### Role in our project
+
+- Day 2 turns the Day 1 design into a real local MCP server.
+- The mock tools prove that ResearchOps can expose model-facing capabilities before any real external paper API is integrated.
+- The local server becomes the baseline that later days will harden with stronger schemas, real dependencies, resources, prompts, persistence, and auth.
+
+#### Why it is designed this way
+
+- Using mock data isolates protocol learning from external API debugging.
+- Type-hint-driven schema generation reduces hand-written JSON Schema work while keeping contracts explicit.
+- Stdio transport makes local development fast because there is no separate HTTP deployment surface yet.
+- Clear tool names and small schemas make model tool selection easier and safer.
+
+#### Alternatives and trade-offs
+
+- Older `FastMCP` examples:
+  - Still useful for understanding older tutorials.
+  - Do not match the current official SDK v2 naming.
+- Real API integration on Day 2:
+  - More realistic.
+  - Adds network, rate-limit, and dependency failures too early.
+- Direct low-level MCP implementation:
+  - Good for protocol depth.
+  - Slower for learning server basics than the high-level SDK.
+
+#### Failure modes
+
+- Using `@server.tool` instead of `@server.tool()` prevents correct tool registration.
+- Printing logs to `stdout` corrupts the stdio protocol stream.
+- Overly loose tool arguments allow empty queries or unreasonable limits.
+- A healthy stdio server is misdiagnosed as broken because it is silent when no client is connected.
+- Installing SDK dependencies into a shared global environment creates package conflicts that would not happen in an isolated virtual environment.
+
+#### Common mistakes
+
+- Using `@server.tool` instead of `@server.tool()`.
+- Printing logs to `stdout` and corrupting the stdio protocol stream.
+- Mixing protocol-level errors with normal application failures.
+- Making Day 2 tools too broad before the tool boundaries are validated.
+- Assuming a silent `python src/server.py` means the server failed to start.
+
+#### Security considerations
+
+- Even mock tools should validate inputs and bound result size.
+- Tool descriptions and outputs are still part of the model-facing surface and should stay explicit and narrow.
+- Local stdio is easier to reason about than remote HTTP, but it does not remove the need for good validation and safe error messages.
+- Mock data can hide real-world dependency failures, so the absence of network risk in Day 2 does not mean later production risks disappear.
+
+#### Interview explanation
+
+A first local MCP server is usually a small stdio-based process that declares its metadata and registers tools with the official SDK. In the current Python SDK v2, `MCPServer` replaces the older `FastMCP` name, and tool schemas are inferred from type hints and docstrings. This lets a client list and call tools locally before introducing remote transport and authentication complexity.
+
+#### Questions for revision
+
+1. Why is mock data the right choice for the first local MCP server?
+   Answer: Mock data isolates protocol learning from external API failures, rate limits, and network debugging, so Day 2 can focus on MCP server behavior, schemas, and local transport.
+
+2. Why must logs go to `stderr` instead of `stdout` for stdio transport?
+   Answer: In local stdio transport, `stdout` carries the MCP protocol stream. Normal logs there can corrupt messages, so logs should go to `stderr` instead.
+
+3. What does `@server.tool()` do for a Python function?
+   Answer: It registers the function as an MCP tool and lets the SDK derive the tool name, description, and input schema from the function name, docstring, and type hints.
+
+4. Why can a tool failure come back as `is_error=True` instead of a raised protocol exception?
+   Answer: Because the MCP request itself can be valid even when the tool operation fails. A missing paper is an application-level failure, so the client gets a tool result marked `is_error=True` rather than a protocol error.
+
+5. Why was a silent `python src/server.py` not automatically a bug?
+   Answer: Because a stdio MCP server is expected to start and wait quietly for a client. It is not a normal interactive CLI and should not print to `stdout` unless it is sending protocol messages.
+
+6. What did MCP Inspector prove beyond the plain unit test and inline client script?
+   Answer: It proved that an external MCP client could launch the server over stdio, discover the tools, and invoke them interactively, which is closer to how a real MCP host behaves.
+
+7. Why should future installs use a virtual environment instead of the shared global Python?
+   Answer: The Day 2 install introduced a `fastapi` / `starlette` conflict risk in the global environment. A project-specific virtual environment avoids polluting unrelated tools and makes dependency behavior reproducible.
+
+#### Active recall review
+
+1. Question: Why can a silent `python src/server.py` still indicate a healthy local MCP server?
+   Answer: A stdio MCP server normally starts and waits quietly for a client. It is not an interactive CLI, and it should avoid printing normal logs to `stdout` because `stdout` carries the MCP protocol stream.
+
+2. Question: What did MCP Inspector prove for the Day 2 server?
+   Answer: It proved that the local stdio server could be launched by an external MCP client, that its tools were discoverable, and that `health_check`, `search_papers`, and `get_paper` could be invoked with expected success and failure behavior.
+
+3. Question: Why is a tool-level failure like "paper not found" better represented as a tool error than as a protocol-level failure?
+   Answer: Because the request itself is valid and the protocol is functioning correctly. The failure is in the application logic for that specific tool call, so it should come back as a tool error rather than implying the MCP protocol exchange itself was malformed.
+
+#### References
+
+- MCP Python SDK docs index: https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/index.md
+- MCP SDK v2 changes: https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/whats-new.md
+- First steps with `MCPServer`: https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/get-started/first-steps.md
+- Tools in the Python SDK: https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/servers/tools.md
+- Transport reference: https://modelcontextprotocol.io/specification/2025-06-18/basic/transports
 
 ### Day 3: Production-Quality Tool Design
 
@@ -197,5 +348,3 @@ MCP is a standard way for AI hosts to discover and use external capabilities suc
 ### Day 13: Observability and Scaling
 
 ### Day 14: Advanced Features and Final Release
-
-

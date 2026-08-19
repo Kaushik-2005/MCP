@@ -25,3 +25,16 @@
 - Why: It keeps the learning path aligned with the curriculum and reduces unnecessary early architecture churn.
 - Trade-offs: Less initial experimentation across alternative stacks.
 - Consequences: Future dependency additions still need explicit justification, but the baseline direction is now clear.
+
+## Decision: Implement Day 2 With Current SDK v2 Naming
+
+- Date: 2026-08-19
+- Status: Accepted
+- Context: The roadmap uses the term FastMCP, but the current official Python SDK v2 renamed the high-level server class to `MCPServer`.
+- Options considered:
+  - Follow older FastMCP examples literally.
+  - Use the current official SDK v2 API and document the rename.
+- Decision: Implement the local server with `MCPServer` and note in the learning materials that this is the current v2 replacement for `FastMCP`.
+- Why: It keeps the project aligned with the current official SDK instead of teaching an outdated import path.
+- Trade-offs: Some roadmap wording and older tutorials use different names, which adds a small translation cost.
+- Consequences: Future code examples in this repository should prefer `MCPServer` unless we explicitly study v1 migration behavior.

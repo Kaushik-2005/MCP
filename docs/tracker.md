@@ -3,9 +3,9 @@
 ## Current Position
 
 - Current module: Module 1 - MCP Foundations
-- Current day: Day 2 - First local MCP server
-- Current task: Build the first local FastMCP server with mock `health_check`, `search_papers`, and `get_paper` tools
-- Next milestone: Create the Day 2 local server entry point and connect it through MCP Inspector
+- Current day: Day 3 - Production-quality tool design
+- Current task: Replace mock-only behavior with stronger tool contracts and prepare real API integration
+- Next milestone: Connect `search_papers` to a real paper API and tighten tool schemas, limits, and errors
 - Active blockers: None
 
 ## Roadmap Progress
@@ -13,7 +13,7 @@
 | Day | Module | Main Topic | Status | Deliverable | Verification | Confidence |
 |---|---|---|---|---|---|---|
 | 1 | Foundations | Protocol fundamentals | Completed | Project specification, architecture diagram, and threat-model outline | `docs/project-spec.md` and `docs/threat-model.md` created; Day 1 theory reviewed interactively; learner explained host/client/server roles, JSON-RPC basics, statelessness, primitive boundaries, and approval vs authorization | 4 |
-| 2 | Foundations | First local MCP server | Not Started | Working local MCP server with `health_check`, `search_papers`, `get_paper` | — | — |
+| 2 | Foundations | First local MCP server | Completed | Working local MCP server with `health_check`, `search_papers`, `get_paper` | `pytest` passed; SDK client listed and invoked all tools; MCP Inspector connected successfully and verified all three tools interactively | 4 |
 | 3 | Foundations | Production-quality tool design | Not Started | Dependable read-only research-paper server | — | — |
 | 4 | Context and Persistence | Resources and prompts | Not Started | Discoverable resources and reusable prompts | — | — |
 | 5 | Context and Persistence | Storage and write operations | Not Started | Persistent MCP application with write safety | — | — |
@@ -41,5 +41,20 @@
 - Decisions made: Start with specification-first documentation before writing server code
 - Topics to revisit: Exact boundary between tools, resources, prompts, and Tasks once the schema is concrete
 - Next action: Begin Day 2 by scaffolding a local FastMCP server and adding mock tools
+
+
+
+### 2026-08-19
+
+- Topics studied: MCP Python SDK v2, MCPServer rename from FastMCP, tool registration, stdio transport, structured results, tool-level errors
+- Work implemented: Added pyproject.toml, local server scaffold, mock paper data, roadmap entry point, and unit test
+- Tests executed: pytest; inline Python verification of direct tool calls; inline SDK client verification for tool listing and invocation
+- Results: pytest passed; client listed health_check, search_papers, and get_paper; success and failure cases behaved as expected
+- Problems encountered: Sandbox helper failed again; global environment install introduced a `fastapi`/`starlette` dependency conflict risk
+- Decisions made: Use current official SDK v2 naming (MCPServer) while documenting the roadmap's older FastMCP term
+- Topics to revisit: MCP Inspector workflow and how stdio transport is wired in practice
+- Next action: Begin Day 3 by tightening tool design and connecting `search_papers` to a real research API
+
+
 
 

@@ -1,0 +1,12 @@
+{
+    "mcpServers": {
+        "researchops-local": {
+            "type": "stdio",
+            "command": "python",
+            "args": [
+                "src/server.py"
+            ],
+            "cwd": "C:\\Users\\kaush\\OneDrive\\Desktop\\Work\\MCP"
+        }
+    }
+}

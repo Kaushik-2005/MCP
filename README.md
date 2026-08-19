@@ -4,7 +4,7 @@ ResearchOps MCP is a learning project for building a production-style Model Cont
 
 ## Current Status
 
-The project is in Day 1 of the roadmap. The current focus is specification, architecture, and threat modeling. Server code has not been created yet.
+The project is in Day 2 of the roadmap. A local MCP server scaffold exists with mock `health_check`, `search_papers`, and `get_paper` tools, and the next step is MCP Inspector connectivity.
 
 ## Planned Capabilities
 
@@ -24,3 +24,23 @@ The project is in Day 1 of the roadmap. The current focus is specification, arch
 - Decisions: [decisions.md](/C:/Users/kaush/OneDrive/Desktop/Work/MCP/docs/decisions.md)
 - Questions: [questions.md](/C:/Users/kaush/OneDrive/Desktop/Work/MCP/docs/questions.md)
 
+
+## Local Development
+
+Install the project in editable mode:
+
+```powershell
+python -m pip install -e .[dev]
+```
+
+Run the unit tests:
+
+```powershell
+pytest
+```
+
+Run the local server entry point:
+
+```powershell
+python src/server.py
+```
