@@ -113,15 +113,16 @@ A working local MCP server that can list and invoke tools.
 
 ### Build
 
-- Connect `search_papers` to a real research API.
+- Connect `search_papers` to a real research API such as OpenAlex.
 - Add pagination and maximum result limits.
 - Add timeouts and dependency error handling.
 - Add `export_bibtex`.
+- Improve search relevance with an exact-first or otherwise explicit search strategy.
 - Test invalid queries, missing IDs, and empty results.
 
 ### Deliverable
 
-A dependable read-only research-paper server.
+A dependable read-only research-paper server with stable IDs, bounded results, and citation export.
 
 ---
 
@@ -514,4 +515,5 @@ One well-designed, secured, evaluated, and deployed MCP server is more valuable 
 - [Building an MCP Server](https://developers.openai.com/plugins/build/mcp-server)
 - [Official MCP Inspector](https://github.com/modelcontextprotocol/inspector)
 - [OWASP MCP Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/MCP_Security_Cheat_Sheet.html)
+
 

@@ -319,6 +319,126 @@ A first local MCP server is usually a small stdio-based process that declares it
 
 ### Day 3: Production-Quality Tool Design
 
+#### Learning objectives
+
+- Design tools that map cleanly to user goals instead of mixing unrelated modes.
+- Use action-oriented tool names and descriptions that help models choose correctly.
+- Define required parameters, optional parameters, limits, and pagination explicitly.
+- Return structured output with stable identifiers and predictable fields.
+- Distinguish validation failures, empty results, not-found cases, and dependency failures.
+
+#### Core concepts
+
+- Good MCP tools should be narrow and recognizable from their name alone.
+- Tool descriptions should explain both what the tool does and when it should be used.
+- Explicit parameter limits make model behavior safer and easier to validate.
+- Stable identifiers matter because later tool calls and resources depend on them.
+- Empty results are not the same thing as an error: a valid query can legitimately return no matches.
+- A production search tool may need multiple search strategies, such as exact-first or title-focused behavior, to improve relevance without changing the user-facing tool boundary.
+
+#### How it works
+
+1. Validate user-facing inputs before calling the dependency.
+2. Call the external paper source through a small service/client layer instead of mixing HTTP directly into the tool handler.
+3. Normalize the upstream response into a stable project-level shape.
+4. Return bounded, structured results with pagination metadata.
+5. Convert missing-data or dependency failures into actionable tool-level errors.
+
+#### Example
+
+- `search_papers(query="model context protocol", limit=2, page=1)` returns a bounded list plus `has_more` and `next_page`.
+- `search_papers(..., search_mode="balanced")` prefers exact matches first and falls back to broader search only when needed.
+- `get_paper(paper_id="W7129030749")` returns one normalized paper.
+- `export_bibtex(paper_id="W7129030749")` returns a BibTeX entry for a stable paper identifier.
+- `search_papers(query="zzzxxyyqqqnonexistentpaperterm", limit=1, page=1)` returns zero results without being treated as an error.
+
+#### Role in our project
+
+- Day 3 upgrades the Day 2 mock server into a real read-only research paper server.
+- The OpenAlex client and `PaperService` create the first transport/business/dependency separation in the codebase.
+- The output shape from Day 3 becomes the baseline that later resources, prompts, caching, and persistence will build on.
+
+#### Why it is designed this way
+
+- A service layer makes dependency handling testable and keeps the MCP tool handlers focused.
+- Stable normalized results protect the rest of the system from upstream API shape changes.
+- Pagination and hard limits prevent oversized responses from crowding model context.
+- Adding `export_bibtex` now proves we can build another user-goal-aligned tool without turning `get_paper` into a multipurpose mode switch.
+
+#### Alternatives and trade-offs
+
+- Keep using mock data:
+  - Simpler and more predictable.
+  - Does not test real dependency behavior or normalization.
+- Put HTTP calls directly inside tool functions:
+  - Fewer files at the beginning.
+  - Harder to test, mock, and extend cleanly.
+- Use CORE instead of OpenAlex:
+  - Better for open-access/full-text-oriented workflows.
+  - Adds earlier API-key and quota workflow complexity than needed for Day 3.
+
+#### Failure modes
+
+- Broad search parameters return low-relevance results because upstream search semantics are looser than expected.
+- A misleading identifier such as `W0000000000` may resolve unexpectedly upstream instead of behaving like a missing paper.
+- Excessive result sizes overwhelm context or hide the most relevant items.
+- Dependency errors become confusing if they are not converted into actionable tool messages.
+
+#### Common mistakes
+
+- Designing one generic paper tool with unrelated modes instead of separate tools.
+- Treating empty results as an exception instead of a valid outcome.
+- Returning raw upstream payloads instead of stable project-shaped data.
+- Skipping result-size limits and pagination metadata.
+- Using identifiers inconsistently between search results and lookup tools.
+
+#### Security considerations
+
+- External paper metadata is still untrusted even when it comes from a reputable scholarly source.
+- Query limits protect both context size and upstream dependency load.
+- Dependency failures should not leak internal stack traces or implementation details.
+- The server should normalize and constrain upstream content before it reaches the model.
+
+#### Interview explanation
+
+Production-quality MCP tool design means turning a rough tool idea into a narrow, predictable, model-friendly contract. In Day 3, that means explicit argument limits, stable identifiers, structured outputs, pagination metadata, and clean separation between tool handlers and the external OpenAlex dependency. The result is a read-only research paper server that behaves predictably for both success and failure cases.
+
+#### Questions for revision
+
+1. Why is a service layer useful between MCP tools and the external API?
+   Answer: It separates transport from dependency logic, makes testing easier, and gives the project one place to normalize upstream data and handle dependency-specific errors.
+
+2. Why should empty search results not be treated as an error?
+   Answer: Because a valid query can legitimately return no matches. That is a normal business outcome, not a broken protocol or broken tool invocation.
+
+3. Why are stable identifiers important in Day 3?
+   Answer: Search results feed later operations such as `get_paper`, `export_bibtex`, and later resources. Those flows only stay reliable if the identifier format is consistent and stable.
+
+4. Why is `export_bibtex` its own tool instead of an optional mode on `get_paper`?
+   Answer: It represents a distinct user goal and output format. Keeping it separate avoids turning `get_paper` into a generic mode-driven tool with mixed responsibilities.
+
+5. Why do pagination and hard limits matter even for a read-only tool?
+   Answer: They keep responses bounded, improve model usability, and reduce dependency load. Unbounded output is bad both for context management and for operational reliability.
+
+#### Active recall review
+
+1. Question: Why is export_bibtex modeled as its own tool instead of adding an output_format flag to get_paper?
+   Answer: Because citation export is a separate user goal with a different output contract. Keeping it separate preserves clean tool boundaries, makes model selection easier, and avoids turning get_paper into a mode-heavy multipurpose tool.
+
+2. Question: Why was the Inspector result showing an MCP paper title a good sign rather than a bug?
+   Answer: Because search_papers is supposed to search a scholarly paper source, not MCP server docs. For the query Model Context Protocol, the correct behavior is to return research papers about MCP if they exist.
+
+3. Question: What did the exact search mode prove during live verification?
+   Answer: It proved the search layer can tighten relevance for precise queries, returning directly MCP-related papers instead of broader or weakly related results.
+
+4. Question: Why is paper://{paper_id} a better future resource shape than returning huge paper payloads from every tool?
+   Answer: It gives the project a stable reference for reusable context. Tools can return identifiers, and later reads can fetch the paper resource only when needed, which keeps tool outputs smaller and cleaner.
+#### References
+
+- OpenAlex docs: https://docs.openalex.org/
+- OpenAlex API entity overview: https://docs.openalex.org/api-entities/works
+- OpenAlex API guide: https://docs.openalex.org/how-to-use-the-api/api-overview
+
 ## Module 2: Context and Persistence
 
 ### Day 4: Resources and Prompts
@@ -348,3 +468,9 @@ A first local MCP server is usually a small stdio-based process that declares it
 ### Day 13: Observability and Scaling
 
 ### Day 14: Advanced Features and Final Release
+
+
+
+
+
+

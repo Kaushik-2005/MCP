@@ -38,3 +38,17 @@
 - Why: It keeps the project aligned with the current official SDK instead of teaching an outdated import path.
 - Trade-offs: Some roadmap wording and older tutorials use different names, which adds a small translation cost.
 - Consequences: Future code examples in this repository should prefer `MCPServer` unless we explicitly study v1 migration behavior.
+
+## Decision: Use OpenAlex as the Day 3 Read-Only Paper Source
+
+- Date: 2026-08-20
+- Status: Accepted
+- Context: Day 3 requires a real read-only research API for `search_papers`, `get_paper`, pagination, limits, and actionable dependency error handling.
+- Options considered:
+  - OpenAlex
+  - CORE API
+  - Semantic Scholar
+- Decision: Use OpenAlex for the Day 3 integration.
+- Why: OpenAlex is a strong fit for read-only paper metadata search with straightforward HTTP access and enough metadata to support `search_papers`, `get_paper`, and `export_bibtex` without adding early authentication or full-text workflow complexity.
+- Trade-offs: OpenAlex is less focused on open-access full-text retrieval than CORE, so later full-text-oriented features may need an additional source.
+- Consequences: Day 3 implementation can focus on production-quality tool design and metadata normalization without introducing early API-key and quota workflow complexity.

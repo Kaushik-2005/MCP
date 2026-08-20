@@ -4,7 +4,7 @@ ResearchOps MCP is a learning project for building a production-style Model Cont
 
 ## Current Status
 
-The project is in Day 2 of the roadmap. A local MCP server scaffold exists with mock `health_check`, `search_papers`, and `get_paper` tools, and the next step is MCP Inspector connectivity.
+The project is in Day 4 of the roadmap. The local MCP server already uses OpenAlex for real paper search and lookup, and the next step is to add resources and prompt templates on top of the read-only paper server.
 
 ## Planned Capabilities
 
@@ -44,3 +44,5 @@ Run the local server entry point:
 ```powershell
 python src/server.py
 ```
+
+
