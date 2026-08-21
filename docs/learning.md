@@ -564,6 +564,116 @@ In MCP, a tool performs an action, a resource exposes stable context through a U
 - MCP Python SDK server decorators: https://py.sdk.modelcontextprotocol.io/
 ### Day 5: Storage and Write Operations
 
+#### Learning objectives
+
+- Understand why persistence belongs below the MCP interface boundary.
+- Understand service, repository, and transport separation.
+- Understand transactions for multi-step writes.
+- Understand idempotency keys and why they matter for safe retries.
+- Understand optimistic concurrency and why updates should not silently overwrite newer state.
+- Understand why write operations should stay as tools while stable context stays as resources.
+
+#### Core concepts
+
+- The MCP interface should stay stable even when the backing storage changes.
+- The repository layer handles database reads and writes.
+- The service layer enforces business rules, validation, idempotency, and concurrency checks.
+- The transport layer exposes tools and resources without owning SQL or storage logic.
+- Idempotency prevents duplicate execution of the same write request.
+- Optimistic concurrency prevents stale updates from silently overwriting newer note versions.
+
+#### How it works
+
+1. A write tool receives validated MCP arguments.
+2. The service layer checks the idempotency key and business rules.
+3. The repository opens a transaction and performs the necessary inserts or updates.
+4. Audit and idempotency records are stored in the same durable layer.
+5. The stable resource, such as `reading-list://{list_id}`, reads from the new persistent state without changing its external shape.
+
+#### Example
+
+- `create_reading_list(name, idempotency_key)` creates durable state and returns a stable resource URI.
+- `add_paper_to_list(list_id, paper_id, idempotency_key)` persists list membership.
+- `add_note(list_id, paper_id, content, idempotency_key)` creates a durable note.
+- `update_note(note_id, content, expected_version, idempotency_key)` uses optimistic concurrency.
+- `delete_note(note_id, expected_version, confirm, idempotency_key)` requires explicit confirmation before deleting state.
+
+#### Role in our project
+
+- Day 5 replaces the temporary Day 4 in-memory reading-list backing with real SQLite persistence.
+- Reading-list resources now reflect durable state rather than demo-only memory.
+- The new write tools establish the first real state-changing MCP operations in the project.
+- This creates the foundation for later auth, auditing, and multi-user behavior.
+
+#### Why it is designed this way
+
+- SQLite is enough for local learning and fits the roadmap's local-development phase.
+- A repository layer keeps database code separate from MCP handlers.
+- A service layer is the right place for idempotency and concurrency rules.
+- Stable resources can survive backing-store changes if the interface contract is kept fixed.
+
+#### Alternatives and trade-offs
+
+- Keep using in-memory state:
+  - Simpler.
+  - Not durable and not realistic for write workflows.
+- Put SQL directly in MCP tool handlers:
+  - Fewer files initially.
+  - Harder to test, change, and reason about.
+- Use PostgreSQL immediately:
+  - More production-like.
+  - Adds more setup and operational complexity than needed for Day 5 learning.
+
+#### Failure modes
+
+- Retried writes create duplicates when no idempotency key exists.
+- A stale note update overwrites a newer note because no version check is enforced.
+- A delete happens accidentally because confirmation is not required.
+- The resource shape changes when the backing store changes, breaking clients unnecessarily.
+
+#### Common mistakes
+
+- Treating persistence as part of the MCP interface instead of the backing implementation.
+- Mixing SQL directly into tool handlers.
+- Using one giant write tool instead of separate user-goal-aligned tools.
+- Ignoring retries and duplicate execution risk.
+- Updating mutable records without version checks.
+
+#### Security considerations
+
+- Write tools are higher-risk than read tools and need stricter validation.
+- Idempotency keys should be treated as untrusted input and validated.
+- Delete operations should require explicit confirmation.
+- Durable audit records matter because state changes need traceability.
+- Single-user local persistence is acceptable for now, but Day 8 must add real ownership and authorization boundaries.
+
+#### Interview explanation
+
+Day 5 turns an MCP demo server into a persistent application. The key design is to keep the MCP interface stable while moving state into a database, separate repository and service layers from transport code, and protect writes with transactions, idempotency keys, optimistic concurrency, and explicit confirmation for destructive actions.
+
+#### Questions for revision
+
+1. Why should `create_reading_list` be a tool and not a resource?
+   Answer: Because it performs a write action that changes state. A resource is for reading stable context, not creating it.
+
+2. Why is repository logic separate from MCP tool handlers?
+   Answer: Because the MCP layer should handle protocol-facing input and output, while the repository layer should handle storage. This keeps the code easier to test and change.
+
+3. What problem does an idempotency key solve?
+   Answer: It prevents the same write operation from being applied twice when a request is retried, repeated, or replayed.
+
+4. What problem does optimistic concurrency solve in `update_note`?
+   Answer: It prevents an older caller from silently overwriting a note that has already been changed by a newer write.
+
+5. Why should `reading-list://{list_id}` keep the same external shape after moving from memory to SQLite?
+   Answer: Because clients and models depend on the MCP contract. The backing implementation can change without forcing an interface change.
+
+#### References
+
+- SQLite docs: https://www.sqlite.org/docs.html
+- MCP specification: https://modelcontextprotocol.io/specification/latest
+- MCP Python SDK docs: https://py.sdk.modelcontextprotocol.io/
+
 ## Module 3: MCP Client and Remote Transport
 
 ### Day 6: Build an MCP Client
@@ -587,6 +697,8 @@ In MCP, a tool performs an action, a resource exposes stable context through a U
 ### Day 13: Observability and Scaling
 
 ### Day 14: Advanced Features and Final Release
+
+
 
 
 

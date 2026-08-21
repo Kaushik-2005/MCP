@@ -65,5 +65,17 @@
 - Why: It preserves the roadmap's separation between MCP interface design and persistence design, allowing us to learn the correct resource boundary before adding database complexity.
 - Trade-offs: The Day 4 reading-list data is not durable and is intentionally limited.
 - Consequences: Day 5 can replace the backing implementation without changing the externally learned MCP resource shape.
+## Decision: Use SQLite and a Repository Layer for Day 5 Local Persistence
 
+- Date: 2026-08-21
+- Status: Accepted
+- Context: Day 5 requires durable reading lists, notes, transactions, and write-safety boundaries on top of the Day 4 resource and prompt layer.
+- Options considered:
+  - Keep using in-memory storage longer.
+  - Add SQLite with a small repository and service layer.
+  - Jump directly to PostgreSQL.
+- Decision: Use SQLite from the Python standard library for local persistence, with a repository layer for database operations and a service layer for business rules.
+- Why: It matches the roadmap's local-development phase, keeps dependencies minimal, and lets us learn transactions, idempotency, and optimistic concurrency without early deployment complexity.
+- Trade-offs: SQLite is not the final deployment database and still assumes a single-user local environment for now.
+- Consequences: Later phases can replace or extend the storage backend while preserving the MCP interface and most service-layer behavior.
 

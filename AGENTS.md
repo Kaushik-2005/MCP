@@ -28,7 +28,7 @@ The following files have specific responsibilities:
 - `docs/learning.md`: The accumulated theoretical learning notes.
 - `README.md`: Instructions for installing, running, testing, and understanding the completed project.
 - `docs/decisions.md`: Important architectural decisions and their reasoning.
-- `docs/questions.md`: Questions, misconceptions, unclear topics, and topics to revisit.
+- `docs/design.md`: Living architecture and code-flow documentation that should be updated as the implementation evolves.
 
 Never modify `MCP_Industry_Learning_Roadmap.md` unless I explicitly request a roadmap change.
 
@@ -247,7 +247,7 @@ After implementation:
 
 ### Step 7: Documentation
 
-Update `docs/learning.md`, `docs/tracker.md`, and other relevant documentation before ending the session.
+Update `docs/learning.md`, `docs/tracker.md`, `docs/design.md`, and other relevant documentation before ending the session.
 
 ## 6. Learning Notes Rules
 
@@ -482,11 +482,12 @@ Do not use destructive Git commands.
 Before ending a learning session:
 
 1. Run the relevant verification commands.
-2. Update `docs/learning.md`.
-3. Update the current entry in `docs/tracker.md`.
-4. Add important decisions to `docs/decisions.md`.
-5. Add unresolved questions to `docs/questions.md`.
-6. Report:
+2. Update docs/learning.md.
+3. Update the current entry in docs/tracker.md.
+4. Update docs/design.md if the architecture, boundaries, request flows, or deployment shape changed.
+5. Add important decisions to docs/decisions.md.
+6. Add unresolved questions to docs/questions.md.
+7. Report:
    - What I learned.
    - What we implemented.
    - Files changed.
@@ -569,3 +570,6 @@ Avoid:
 Challenge weak assumptions respectfully and explain the evidence behind recommendations.
 
 The goal is not simply to finish in 14 calendar days. The goal is to complete all 14 learning modules with genuine understanding and a demonstrably reliable MCP project.
+
+
+

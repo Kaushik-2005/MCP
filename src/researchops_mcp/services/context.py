@@ -1,74 +1,17 @@
-"""Day 4 resource and prompt context helpers for ResearchOps MCP."""
+"""Resource and prompt context helpers for ResearchOps MCP."""
 
 from __future__ import annotations
 
 import json
-import re
-from dataclasses import dataclass
 from typing import Any
 
-from researchops_mcp.services.openalex import PaperService, PaperServiceError, normalize_paper_id
+from researchops_mcp.services.openalex import PaperService, normalize_paper_id
 
 MAX_ABSTRACT_CHARS = 1200
-READING_LIST_ID_PATTERN = re.compile(r"^[a-z0-9-]{3,40}$")
+MAX_NOTE_PREVIEW_CHARS = 240
 
 
-class ReadingListError(Exception):
-    """Base error for temporary Day 4 reading-list operations."""
-
-
-class ReadingListValidationError(ReadingListError):
-    """Raised when a reading-list request is malformed."""
-
-
-class ReadingListNotFoundError(ReadingListError):
-    """Raised when a requested reading list does not exist."""
-
-
-@dataclass(frozen=True, slots=True)
-class ReadingListRecord:
-    list_id: str
-    name: str
-    description: str
-    paper_ids: tuple[str, ...]
-
-
-class ReadingListService:
-    """Temporary in-memory reading-list service for Day 4 resource work.
-
-    Persistence intentionally waits for Day 5. This service only exposes a
-    stable resource shape so the MCP interface can be learned first.
-    """
-
-    def __init__(self) -> None:
-        self._lists: dict[str, ReadingListRecord] = {
-            "starter-mcp": ReadingListRecord(
-                list_id="starter-mcp",
-                name="Starter MCP Papers",
-                description="A small starter list for comparing foundational MCP research papers.",
-                paper_ids=("W7129030749", "W4417069007"),
-            ),
-            "researchops-demo": ReadingListRecord(
-                list_id="researchops-demo",
-                name="ResearchOps Demo List",
-                description="A demo reading list used to exercise the Day 4 reading-list resource.",
-                paper_ids=("W7129030749",),
-            ),
-        }
-
-    def get_reading_list(self, list_id: str) -> ReadingListRecord:
-        normalized_id = list_id.strip().lower()
-        if not normalized_id:
-            raise ReadingListValidationError("list_id must not be empty.")
-        if not READING_LIST_ID_PATTERN.fullmatch(normalized_id):
-            raise ReadingListValidationError("list_id must contain only lowercase letters, numbers, or hyphens.")
-        record = self._lists.get(normalized_id)
-        if record is None:
-            raise ReadingListNotFoundError(f"Reading list '{list_id}' was not found.")
-        return record
-
-
-def truncate_text(text: str | None, *, limit: int = MAX_ABSTRACT_CHARS) -> tuple[str | None, bool]:
+def truncate_text(text: str | None, *, limit: int) -> tuple[str | None, bool]:
     if text is None:
         return None, False
     if len(text) <= limit:
@@ -78,7 +21,7 @@ def truncate_text(text: str | None, *, limit: int = MAX_ABSTRACT_CHARS) -> tuple
 
 def build_paper_resource_document(paper_service: PaperService, paper_id: str) -> str:
     paper = paper_service.get_paper(paper_id)
-    abstract, abstract_truncated = truncate_text(paper.get("abstract"))
+    abstract, abstract_truncated = truncate_text(paper.get("abstract"), limit=MAX_ABSTRACT_CHARS)
     payload = {
         "resource_type": "paper",
         "uri": f"paper://{paper['paper_id']}",
@@ -96,21 +39,44 @@ def build_paper_resource_document(paper_service: PaperService, paper_id: str) ->
     return json.dumps(payload, indent=2)
 
 
-def build_reading_list_resource_document(reading_list_service: ReadingListService, list_id: str) -> str:
-    record = reading_list_service.get_reading_list(list_id)
+def build_reading_list_resource_document(reading_list: dict[str, Any]) -> str:
+    notes = []
+    notes_truncated = False
+    for note in reading_list.get("notes", []):
+        preview, was_truncated = truncate_text(note.get("content"), limit=MAX_NOTE_PREVIEW_CHARS)
+        if was_truncated:
+            notes_truncated = True
+        notes.append(
+            {
+                "note_id": note["note_id"],
+                "paper_id": note["paper_id"],
+                "content_preview": preview,
+                "version": note["version"],
+                "updated_at": note["updated_at"],
+            }
+        )
+
     payload = {
         "resource_type": "reading_list",
-        "uri": f"reading-list://{record.list_id}",
-        "list_id": record.list_id,
-        "name": record.name,
-        "description": record.description,
-        "paper_count": len(record.paper_ids),
-        "paper_ids": list(record.paper_ids),
-        "paper_resources": [f"paper://{paper_id}" for paper_id in record.paper_ids],
-        "notes": [
-            "This is a temporary in-memory reading list for Day 4.",
-            "Persistent reading-list storage is intentionally deferred to Day 5.",
+        "uri": f"reading-list://{reading_list['list_id']}",
+        "list_id": reading_list["list_id"],
+        "name": reading_list["name"],
+        "description": reading_list["description"],
+        "created_at": reading_list["created_at"],
+        "updated_at": reading_list["updated_at"],
+        "paper_count": len(reading_list.get("papers", [])),
+        "papers": [
+            {
+                "paper_id": paper["paper_id"],
+                "title": paper["title"],
+                "year": paper.get("year"),
+                "resource_uri": f"paper://{paper['paper_id']}",
+            }
+            for paper in reading_list.get("papers", [])
         ],
+        "note_count": len(notes),
+        "notes": notes,
+        "notes_truncated": notes_truncated,
     }
     return json.dumps(payload, indent=2)
 

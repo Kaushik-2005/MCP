@@ -1,11 +1,6 @@
 import json
 
-from researchops_mcp.services.context import (
-    MAX_ABSTRACT_CHARS,
-    ReadingListService,
-    build_paper_resource_document,
-    build_reading_list_resource_document,
-)
+from researchops_mcp.services.context import MAX_ABSTRACT_CHARS, build_paper_resource_document, build_reading_list_resource_document
 
 
 class FakePaperService:
@@ -33,12 +28,31 @@ def test_build_paper_resource_document_truncates_abstract() -> None:
     assert payload["paper"]["abstract"].endswith("...")
 
 
-def test_build_reading_list_resource_document_exposes_paper_resource_refs() -> None:
-    service = ReadingListService()
-
-    payload = json.loads(build_reading_list_resource_document(service, "starter-mcp"))
+def test_build_reading_list_resource_document_exposes_papers_and_notes() -> None:
+    payload = json.loads(
+        build_reading_list_resource_document(
+            {
+                "list_id": "starter-mcp",
+                "name": "Starter MCP Papers",
+                "description": "Demo",
+                "created_at": "2026-08-21T10:00:00+00:00",
+                "updated_at": "2026-08-21T10:05:00+00:00",
+                "papers": [{"paper_id": "W123", "title": "Test Paper", "year": 2026}],
+                "notes": [
+                    {
+                        "note_id": "note-1",
+                        "paper_id": "W123",
+                        "content": "y" * 300,
+                        "version": 2,
+                        "updated_at": "2026-08-21T10:05:00+00:00",
+                    }
+                ],
+            }
+        )
+    )
 
     assert payload["resource_type"] == "reading_list"
     assert payload["list_id"] == "starter-mcp"
-    assert payload["paper_count"] >= 1
-    assert all(uri.startswith("paper://W") for uri in payload["paper_resources"])
+    assert payload["papers"][0]["resource_uri"] == "paper://W123"
+    assert payload["note_count"] == 1
+    assert payload["notes_truncated"] is True

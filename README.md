@@ -4,7 +4,7 @@ ResearchOps MCP is a learning project for building a production-style Model Cont
 
 ## Current Status
 
-The project is in Day 5 of the roadmap. The local MCP server already supports OpenAlex-backed paper tools, stable paper and reading-list resources, and reusable prompt templates. The next step is to add persistence and safe write operations on top of the new Day 4 context layer.
+The project is in Day 6 of the roadmap. The local MCP server now supports OpenAlex-backed paper tools, stable paper and reading-list resources, reusable prompt templates, and SQLite-backed write tools for reading lists and notes. The next step is to build a Python MCP client on top of the completed local server.
 
 ## Planned Capabilities
 
@@ -18,11 +18,11 @@ The project is in Day 5 of the roadmap. The local MCP server already supports Op
 
 ## Roadmap References
 
-- Curriculum: [MCP_Industry_Learning_Roadmap.md](/C:/Users/kaush/OneDrive/Desktop/Work/MCP/MCP_Industry_Learning_Roadmap.md)
-- Progress: [tracker.md](/C:/Users/kaush/OneDrive/Desktop/Work/MCP/docs/tracker.md)
-- Learning notes: [learning.md](/C:/Users/kaush/OneDrive/Desktop/Work/MCP/docs/learning.md)
-- Decisions: [decisions.md](/C:/Users/kaush/OneDrive/Desktop/Work/MCP/docs/decisions.md)
-- Questions: [questions.md](/C:/Users/kaush/OneDrive/Desktop/Work/MCP/docs/questions.md)
+- Curriculum: `MCP_Industry_Learning_Roadmap.md`
+- Progress: `docs/tracker.md`
+- Learning notes: `docs/learning.md`
+- Decisions: `docs/decisions.md`
+- Design: `docs/design.md`
 
 
 ## Local Development
@@ -50,6 +50,11 @@ Run the server through MCP Inspector:
 ```powershell
 npx @modelcontextprotocol/inspector@latest python src/server.py
 ```
+
+
+
+
+
 
 
 

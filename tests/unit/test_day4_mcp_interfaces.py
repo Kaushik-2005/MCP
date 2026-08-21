@@ -26,7 +26,8 @@ async def test_server_reads_reading_list_resource_and_renders_compare_prompt() -
         resource_result = await client.read_resource("reading-list://starter-mcp")
         reading_list_payload = json.loads(resource_result.contents[0].text)
         assert reading_list_payload["list_id"] == "starter-mcp"
-        assert reading_list_payload["paper_resources"]
+        assert reading_list_payload["papers"]
+        assert reading_list_payload["papers"][0]["resource_uri"].startswith("paper://W")
 
         prompt_result = await client.get_prompt(
             "compare_papers",
