@@ -443,6 +443,125 @@ Production-quality MCP tool design means turning a rough tool idea into a narrow
 
 ### Day 4: Resources and Prompts
 
+#### Learning objectives
+
+- Distinguish clearly between tools, resources, and prompts in MCP.
+- Understand why stable context should be exposed through resource URIs instead of repeated tool calls.
+- Understand resource templates and why they are better than pre-registering every individual resource instance.
+- Understand prompt templates as reusable reasoning scaffolds with typed arguments.
+- Understand why context-size limits matter for model-facing resources and prompts.
+
+#### Core concepts
+
+- A tool is for performing an operation now.
+- A resource is for reading stable, identifiable context.
+- A prompt is for reusable instruction scaffolding that helps the model work with context.
+- Resource templates such as `paper://{paper_id}` let the server expose a whole family of resources without registering each concrete instance in advance.
+- Model-facing context should be bounded. A paper resource should not dump unbounded raw upstream payloads.
+
+#### How it works
+
+1. A client discovers available resource templates and prompts from the server.
+2. The client reads a resource by URI, such as `paper://W7129030749`.
+3. The server resolves the URI template, validates its parameters, and returns structured resource content.
+4. The client gets a prompt by name with arguments, such as `compare_papers` with two paper IDs.
+5. The server renders reusable prompt messages that point the model at the right context and reasoning task.
+
+#### Example
+
+- `search_papers` stays a tool because searching is an action.
+- `paper://W7129030749` is a resource because one paper is stable, identifiable context.
+- `reading-list://starter-mcp` is a resource because a reading list is stable context that can be re-read.
+- `compare_papers(paper_id_a, paper_id_b, focus)` is a prompt because it gives reusable reasoning structure instead of performing a backend action.
+
+#### Role in our project
+
+- Day 4 turns the Day 3 paper server into a context server instead of only a tool server.
+- Paper resources make later workflows cleaner because tools can return identifiers and URIs instead of repeating full paper payloads.
+- Reading-list resources establish the interface shape now, while real persistence is intentionally deferred to Day 5.
+- Prompt templates establish reusable comparison and literature-review workflows without inflating the tool surface.
+
+#### Why it is designed this way
+
+- Stable URIs let clients and models refer back to the same context predictably.
+- Resource templates avoid manual registration of every paper or list.
+- Prompt templates reduce repetitive free-form prompting and make higher-level workflows more consistent.
+- Bounded resource content protects token budget and keeps important content from being buried.
+
+#### Alternatives and trade-offs
+
+- Keep using only tools:
+  - Simpler initially.
+  - Repeats the same context fetches and mixes action and context responsibilities.
+- Return full paper payloads from every tool:
+  - Convenient in small demos.
+  - Wasteful, harder to reuse, and worse for context-size discipline.
+- Delay reading-list resources until persistence exists:
+  - Avoids temporary mock state.
+  - Slows learning of the MCP interface boundary that Day 4 is meant to teach.
+
+#### Failure modes
+
+- A server exposes stable context only through tools, causing repeated and unnecessary calls.
+- Resource content grows too large and crowds out the useful part of the context.
+- Prompt templates become pseudo-tools that do too much backend work instead of staying reusable reasoning scaffolds.
+- Resource URIs are unstable, making later references brittle.
+
+#### Common mistakes
+
+- Treating a resource as just another tool with no URI identity.
+- Returning raw upstream payloads inside resources.
+- Putting write behavior behind resources.
+- Making prompt templates too vague or too overloaded.
+- Forgetting that prompt arguments should stay simple and explicit.
+
+#### Security considerations
+
+- Resource parameters are still untrusted input and must be validated.
+- Resource contents are still untrusted model-facing data, even when sourced from scholarly APIs.
+- Prompt templates should not assume resource content is safe or complete.
+- Context-size limits are also a safety measure because oversized context can hide important warnings or constraints.
+
+#### Interview explanation
+
+In MCP, a tool performs an action, a resource exposes stable context through a URI, and a prompt provides reusable reasoning scaffolding. In Day 4, ResearchOps keeps search as a tool, exposes papers and reading lists as resources, and adds comparison and literature-review prompts so clients can discover context and workflows without overloading the tool surface.
+
+#### Questions for revision
+
+1. Why is `paper://{paper_id}` better modeled as a resource than repeated calls to `get_paper`?
+   Answer: Because one paper is stable, identifiable context. A resource URI gives the client a reusable handle for that context instead of treating every read as a fresh action.
+
+2. Why is `compare_papers` a prompt instead of a tool?
+   Answer: Because it provides reusable reasoning structure for the model. It does not need to perform a backend side effect or external computation on its own.
+
+3. What problem do resource templates solve?
+   Answer: They let the server expose a family of resources like `paper://{paper_id}` or `reading-list://{list_id}` without pre-registering every individual instance.
+
+4. Why do context-size limits matter for resources and prompts?
+   Answer: Because they are model-facing. Oversized abstracts, lists, or prompt bodies waste tokens, make tool or resource use harder, and can bury the important parts of the context.
+
+5. Why was the temporary in-memory `reading-list://{list_id}` layer acceptable on Day 4?
+   Answer: Because Day 4 is about MCP interface shape, not persistence. The stable resource contract can be learned now, while durable storage is intentionally introduced on Day 5.
+
+#### Active recall review
+
+1. Question: If a paper can already be fetched by `get_paper`, why still add `paper://{paper_id}`?
+   Answer: Because the resource URI is a reusable context handle. It separates stable context access from action-oriented tools and makes later workflows cleaner.
+
+2. Question: Why is it dangerous to let paper resources return huge raw payloads?
+   Answer: It wastes context budget, makes the useful signal harder to find, and couples the model to unstable upstream response shapes.
+
+3. Question: Why did Day 4 use temporary in-memory reading lists instead of waiting for the database layer?
+   Answer: Because the learning goal was to establish the correct resource boundary first. Persistence is a separate concern that belongs to Day 5.
+
+4. Question: What is the key difference between a prompt argument and a resource URI?
+   Answer: A prompt argument configures how a prompt is rendered, while a resource URI identifies the stable context the client can read.
+
+#### References
+
+- MCP resources concept: https://modelcontextprotocol.io/specification/latest
+- MCP prompts concept: https://modelcontextprotocol.io/specification/latest
+- MCP Python SDK server decorators: https://py.sdk.modelcontextprotocol.io/
 ### Day 5: Storage and Write Operations
 
 ## Module 3: MCP Client and Remote Transport
@@ -468,6 +587,8 @@ Production-quality MCP tool design means turning a rough tool idea into a narrow
 ### Day 13: Observability and Scaling
 
 ### Day 14: Advanced Features and Final Release
+
+
 
 
 

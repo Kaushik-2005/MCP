@@ -2,10 +2,10 @@
 
 ## Current Position
 
-- Current module: Module 1 - MCP Foundations
-- Current day: Day 4 - Resources and prompts
-- Current task: Add paper and reading-list resources plus prompt templates without turning every retrieval into a tool call
-- Next milestone: Add `paper://{paper_id}`, `reading-list://{list_id}`, and reusable comparison prompts
+- Current module: Module 2 - Context and Persistence
+- Current day: Day 5 - Storage and write operations
+- Current task: Introduce persistence and write-safe operations on top of the new Day 4 resource and prompt layer
+- Next milestone: Add persistent reading lists, notes, and write tools with safe update boundaries
 - Active blockers: None
 
 ## Roadmap Progress
@@ -15,7 +15,7 @@
 | 1 | Foundations | Protocol fundamentals | Completed | Project specification, architecture diagram, and threat-model outline | `docs/project-spec.md` and `docs/threat-model.md` created; Day 1 theory reviewed interactively; learner explained host/client/server roles, JSON-RPC basics, statelessness, primitive boundaries, and approval vs authorization | 4 |
 | 2 | Foundations | First local MCP server | Completed | Working local MCP server with `health_check`, `search_papers`, `get_paper` | `pytest` passed; SDK client listed and invoked all tools; MCP Inspector connected successfully and verified all three tools interactively | 4 |
 | 3 | Foundations | Production-quality tool design | Completed | Dependable read-only OpenAlex-backed research-paper server | `pytest` passed; MCP Inspector verified `search_papers`, `get_paper`, and `export_bibtex`; exact-mode MCP query returned relevant MCP papers; empty-result and invalid-query cases verified; learner explained empty results, stable identifiers, service-layer separation, and separate export tooling | 5 |
-| 4 | Context and Persistence | Resources and prompts | Not Started | Discoverable resources and reusable prompts | — | — |
+| 4 | Context and Persistence | Resources and prompts | Completed | Discoverable paper and reading-list resources plus reusable prompts | `pytest` passed with 10 tests; MCP Inspector verified Day 4 resources and prompts interactively; in-process MCP client listed resource templates and prompts, read `reading-list://starter-mcp`, and rendered `compare_papers`; learner explained tool vs resource vs prompt boundaries and why context-size limits matter | 4 |
 | 5 | Context and Persistence | Storage and write operations | Not Started | Persistent MCP application with write safety | — | — |
 | 6 | Client and Remote Transport | Build an MCP client | Not Started | Python CLI client for ResearchOps MCP | — | — |
 | 7 | Client and Remote Transport | Streamable HTTP and deployment | Not Started | Remotely accessible staging MCP server | — | — |
@@ -72,6 +72,16 @@
 - Topics to revisit: Additional ranking heuristics if OpenAlex still returns weak long-tail matches for ambiguous queries
 - Next action: Begin Day 4 by adding resources and prompt templates on top of the read-only paper server
 
+### 2026-08-21
 
+- Topics studied: tools versus resources, resource templates, stable URIs, prompt templates, typed prompt arguments, and context-size limits
+- Work implemented: Added `paper://{paper_id}` and `reading-list://{list_id}` resource templates, reusable `compare_papers` and `generate_literature_review` prompts, bounded paper-resource abstract rendering, and a temporary in-memory reading-list layer for Day 4
+- Tests executed: `pytest`; MCP Inspector resource and prompt verification
+- Results: 10 tests passed; MCP in-process client listed the Day 4 resource templates and prompts, read the reading-list resource successfully, and rendered the comparison prompt successfully`r`n- Results: MCP Inspector confirmed `paper://{paper_id}` and `reading-list://{list_id}` resources work, and both Day 4 prompts render correctly
+- Results: Learner can explain why papers belong behind stable resources, why comparison belongs behind a prompt, why resource templates avoid pre-registering every instance, and why context-size limits matter for model-facing resources and prompts
+- Problems encountered: None during implementation or test execution
+- Decisions made: Expose the Day 4 reading-list resource interface now with temporary in-memory data, and defer real persistence to Day 5 intentionally
+- Topics to revisit: How much prompt logic should remain pure scaffolding versus enriching itself with fetched paper metadata
+- Next action: Begin Day 5 by introducing persistence, read/write separation, and safe write operations
 
 

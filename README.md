@@ -4,7 +4,7 @@ ResearchOps MCP is a learning project for building a production-style Model Cont
 
 ## Current Status
 
-The project is in Day 4 of the roadmap. The local MCP server already uses OpenAlex for real paper search and lookup, and the next step is to add resources and prompt templates on top of the read-only paper server.
+The project is in Day 5 of the roadmap. The local MCP server already supports OpenAlex-backed paper tools, stable paper and reading-list resources, and reusable prompt templates. The next step is to add persistence and safe write operations on top of the new Day 4 context layer.
 
 ## Planned Capabilities
 
@@ -44,5 +44,13 @@ Run the local server entry point:
 ```powershell
 python src/server.py
 ```
+
+Run the server through MCP Inspector:
+
+```powershell
+npx @modelcontextprotocol/inspector@latest python src/server.py
+```
+
+
 
 

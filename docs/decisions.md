@@ -52,3 +52,18 @@
 - Why: OpenAlex is a strong fit for read-only paper metadata search with straightforward HTTP access and enough metadata to support `search_papers`, `get_paper`, and `export_bibtex` without adding early authentication or full-text workflow complexity.
 - Trade-offs: OpenAlex is less focused on open-access full-text retrieval than CORE, so later full-text-oriented features may need an additional source.
 - Consequences: Day 3 implementation can focus on production-quality tool design and metadata normalization without introducing early API-key and quota workflow complexity.
+
+## Decision: Expose Reading-List Resources Before Persistence Exists
+
+- Date: 2026-08-21
+- Status: Accepted
+- Context: Day 4 requires `reading-list://{list_id}` resources and reusable prompt workflows, but durable storage is intentionally scheduled for Day 5.
+- Options considered:
+  - Delay reading-list resources until the database layer exists.
+  - Expose the reading-list resource interface now with a temporary in-memory backing layer.
+- Decision: Expose `reading-list://{list_id}` on Day 4 using a small in-memory service and defer persistence to Day 5.
+- Why: It preserves the roadmap's separation between MCP interface design and persistence design, allowing us to learn the correct resource boundary before adding database complexity.
+- Trade-offs: The Day 4 reading-list data is not durable and is intentionally limited.
+- Consequences: Day 5 can replace the backing implementation without changing the externally learned MCP resource shape.
+
+
