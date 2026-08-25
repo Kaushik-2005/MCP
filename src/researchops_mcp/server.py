@@ -1,7 +1,9 @@
-"""Day 5 local MCP server for the ResearchOps learning project."""
+"""Day 7 transport-ready MCP server for the ResearchOps learning project."""
 
 from __future__ import annotations
 
+import argparse
+import os
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +19,13 @@ from researchops_mcp.services.context import (
 from researchops_mcp.services.library import LibraryServiceError, ResearchLibraryService
 from researchops_mcp.services.openalex import OpenAlexClient, PaperService, PaperServiceError
 
-DEFAULT_DB_PATH = str(Path(__file__).resolve().parents[2] / "data" / "researchops.db")
+LOCAL_DEFAULT_DB_PATH = str(Path(__file__).resolve().parents[2] / "data" / "researchops.db")
+DEFAULT_DB_PATH = os.getenv("DATABASE_PATH", LOCAL_DEFAULT_DB_PATH)
+DEFAULT_HOST = os.getenv("MCP_HOST", "127.0.0.1")
+DEFAULT_PORT = int(os.getenv("PORT", "8000"))
+DEFAULT_STREAMABLE_HTTP_PATH = os.getenv("MCP_STREAMABLE_HTTP_PATH", "/mcp")
+DEFAULT_TRANSPORT = os.getenv("MCP_TRANSPORT", "stdio")
+DEFAULT_STATELESS_HTTP = os.getenv("MCP_STATELESS_HTTP", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def create_server(*, database_path: str | None = None, paper_service: PaperService | None = None) -> MCPServer:
@@ -28,17 +36,17 @@ def create_server(*, database_path: str | None = None, paper_service: PaperServi
 
     server = MCPServer(
         name="researchops-mcp",
-        version="0.4.0",
+        version="0.5.0",
         instructions=(
             "ResearchOps MCP exposes OpenAlex-backed paper tools, stable paper and reading-list resources, "
-            "reusable prompts, and Day 5 persistent write tools for reading lists and notes. "
+            "reusable prompts, persistent write tools for reading lists and notes, and Day 7 Streamable HTTP transport. "
             "Use read tools and resources for retrieval, and use write tools for state changes with idempotency keys."
         ),
     )
 
     @server.tool()
     def health_check() -> dict[str, str]:
-        """Check whether the local ResearchOps MCP server is reachable."""
+        """Check whether the ResearchOps MCP server is reachable."""
         return {
             "status": "ok",
             "server": "researchops-mcp",
@@ -155,9 +163,66 @@ def create_server(*, database_path: str | None = None, paper_service: PaperServi
 server = create_server()
 
 
-def main() -> None:
-    """Run the local MCP server over stdio."""
-    server.run()
+def create_streamable_http_app(
+    *,
+    streamable_http_path: str = DEFAULT_STREAMABLE_HTTP_PATH,
+    json_response: bool = False,
+    stateless_http: bool = DEFAULT_STATELESS_HTTP,
+    host: str = DEFAULT_HOST,
+):
+    """Build a Streamable HTTP ASGI app for remote-style serving."""
+    return server.streamable_http_app(
+        streamable_http_path=streamable_http_path,
+        json_response=json_response,
+        stateless_http=stateless_http,
+        host=host,
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="ResearchOps MCP server")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "streamable-http"],
+        default=DEFAULT_TRANSPORT,
+        help="Transport to use for serving MCP.",
+    )
+    parser.add_argument("--host", default=DEFAULT_HOST, help="Host for Streamable HTTP transport.")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Port for Streamable HTTP transport.")
+    parser.add_argument(
+        "--streamable-http-path",
+        default=DEFAULT_STREAMABLE_HTTP_PATH,
+        help="Path for Streamable HTTP transport.",
+    )
+    parser.add_argument(
+        "--json-response",
+        action="store_true",
+        help="Return JSON responses instead of event streams where supported.",
+    )
+    parser.add_argument(
+        "--stateless-http",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_STATELESS_HTTP,
+        help="Enable stateless HTTP mode for remote-style serving.",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Run the MCP server over stdio or Streamable HTTP."""
+    args = build_parser().parse_args(argv)
+    if args.transport == "stdio":
+        server.run(transport="stdio")
+        return
+
+    server.run(
+        transport="streamable-http",
+        host=args.host,
+        port=args.port,
+        streamable_http_path=args.streamable_http_path,
+        json_response=args.json_response,
+        stateless_http=args.stateless_http,
+    )
 
 
 if __name__ == "__main__":

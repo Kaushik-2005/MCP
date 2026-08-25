@@ -93,3 +93,17 @@
 - Trade-offs: The client uses a temporary explicit local write-tool policy and does not yet exercise remote transport concerns.
 - Consequences: Day 7 can build on a working client mental model instead of combining client learning with HTTP deployment changes in one step.
 
+## Decision: Keep One Shared MCP Surface Across Stdio And HTTP
+
+- Date: 2026-08-25
+- Status: Accepted
+- Context: Day 7 requires adding Streamable HTTP transport without breaking the local development workflow or forcing needless interface churn.
+- Options considered:
+  - Maintain separate stdio and HTTP registration paths
+  - Replace stdio with HTTP entirely
+  - Keep one shared server factory and switch transports only at startup
+- Decision: Keep one shared `create_server()` capability factory and make startup transport-aware instead of transport-specific at the interface-registration layer.
+- Why: This preserves the MCP surface across transport changes, reduces drift risk, and keeps local stdio development intact.
+- Trade-offs: The startup code becomes slightly more configurable, and client transport behavior must explicitly account for stdio versus HTTP lifecycle differences.
+- Consequences: ResearchOps can evolve transport and deployment shape without redesigning tools, resources, and prompts every time the serving path changes.
+

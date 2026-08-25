@@ -1,0 +1,12 @@
+__pycache__/
+.pytest_cache/
+.git/
+.gitignore
+.venv/
+.env
+.env.*
+data/
+tests/
+docs/
+.tmp-day7-http.out
+.tmp-day7-http.err

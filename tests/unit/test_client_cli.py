@@ -1,4 +1,4 @@
-from researchops_mcp.client_cli import WRITE_TOOLS, parse_key_value_pairs, parse_scalar
+from researchops_mcp.client_cli import WRITE_TOOLS, build_config, build_parser, parse_key_value_pairs, parse_scalar
 
 
 def test_parse_key_value_pairs_converts_scalar_types() -> None:
@@ -42,3 +42,27 @@ def test_write_tool_policy_contains_day5_writes() -> None:
         "update_note",
         "delete_note",
     }
+
+
+def test_build_config_defaults_to_stdio_mode() -> None:
+    args = build_parser().parse_args(["discover"])
+    config = build_config(args)
+
+    assert config.connection_mode == "stdio"
+    assert config.server_command == "python"
+    assert config.server_args == ["src/server.py"]
+    assert config.server_url == "http://127.0.0.1:8000/mcp"
+
+
+def test_build_config_accepts_http_mode() -> None:
+    args = build_parser().parse_args([
+        "--connection-mode",
+        "http",
+        "--server-url",
+        "http://127.0.0.1:8765/mcp",
+        "discover",
+    ])
+    config = build_config(args)
+
+    assert config.connection_mode == "http"
+    assert config.server_url == "http://127.0.0.1:8765/mcp"

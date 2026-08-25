@@ -812,6 +812,112 @@ An MCP client is the host-side component that discovers a server's capabilities,
 
 ### Day 7: Streamable HTTP and Deployment
 
+#### Learning objectives
+
+- Understand how Streamable HTTP differs from local stdio transport.
+- Understand why transport can change without changing the MCP capability surface.
+- Understand remote lifecycle concerns such as long-running server processes, headers, and request routing.
+- Understand why stateless protocol behavior matters more for remote serving.
+- Understand the first deployment concerns: containerization, version pinning, and remote-style verification.
+
+#### Core concepts
+
+- `stdio` transport is process-local and client-launched.
+- Streamable HTTP transport is server-hosted and network-reachable.
+- The MCP interface contract should stay stable when only the transport changes.
+- Remote serving increases the importance of statelessness because requests may hit different workers or instances.
+- Containerization makes the runtime reproducible and easier to move toward staging.
+
+#### How it works
+
+1. The same `MCPServer` capability surface is created once in the normal server factory.
+2. The startup path chooses a transport: `stdio` or `streamable-http`.
+3. In HTTP mode, the server listens on a host, port, and MCP path instead of waiting on subprocess stdio.
+4. A remote-style client reaches the server through a URL such as `http://127.0.0.1:8765/mcp`.
+5. Discovery happens over HTTP, and then the client uses the discovered capability surface for later operations.
+6. The local Docker image provides a staging-style runtime shape for the HTTP server.
+
+#### Example
+
+- `python src/server.py --transport streamable-http --host 127.0.0.1 --port 8765 --stateless-http`
+- `python client/cli.py --connection-mode http --server-url http://127.0.0.1:8765/mcp discover`
+- `python client/cli.py --connection-mode http --server-url http://127.0.0.1:8765/mcp list-tools`
+
+#### Role in our project
+
+- Day 7 turns ResearchOps from a local-only MCP learning server into a remotely reachable MCP server shape.
+- The server now supports both local development via `stdio` and remote-style serving via Streamable HTTP.
+- The CLI client can now exercise both transports.
+- The Dockerfile gives the project its first reproducible deployment artifact.
+
+#### Why it is designed this way
+
+- The capability surface stays stable while the transport changes.
+- The startup path is transport-aware so the project can keep `stdio` for local development and HTTP for remote-style testing.
+- The HTTP app factory exists so the server can later be embedded behind other ASGI deployment setups if needed.
+- The client gained an explicit `--connection-mode` switch so the same verification surface can test both transports.
+
+#### Alternatives and trade-offs
+
+- Replace `stdio` entirely with HTTP:
+  - Simpler long term.
+  - Worse for local development and earlier learning days.
+- Build a completely separate HTTP-only server entry point:
+  - Clear separation.
+  - More duplication and more drift risk.
+- Keep the server stdio-only and rely on later deployment changes:
+  - Less code now.
+  - Fails the Day 7 transport learning goal.
+
+#### Failure modes
+
+- A client assumes the old initialized flow applies unchanged on every remote path.
+- The server changes tool/resource/prompt shapes while changing transport, forcing needless client breakage.
+- Remote startup binds only to local defaults when container deployment expects `0.0.0.0`.
+- The project claims remote readiness without verifying a real HTTP MCP client against the server.
+
+#### Common mistakes
+
+- Treating transport change as a reason to redesign the entire MCP interface.
+- Forgetting that remote serving is a long-running process, not a subprocess launch pattern.
+- Mixing discovery and later request flow incorrectly on the remote transport.
+- Assuming a Dockerfile alone means the server is production deployed.
+
+#### Security considerations
+
+- Remote HTTP transport expands the attack surface compared with local stdio.
+- TLS, reverse proxy, CORS, and origin validation matter for real deployment, even if this project has not fully implemented them yet.
+- Stateless serving helps prevent hidden connection-local assumptions from becoming remote correctness bugs.
+- Day 7 does not replace the need for Day 8 authentication or Day 9 security hardening.
+
+#### Interview explanation
+
+Day 7 adds Streamable HTTP transport to the same MCP server without changing the tool, resource, or prompt contract. The key idea is to keep the MCP surface stable while making the server network-reachable, then verify that a real MCP client can discover and use it remotely over HTTP.
+
+#### Questions for revision
+
+1. Why should the MCP interface stay stable when moving from `stdio` to HTTP?
+   Answer: Because transport is only the delivery mechanism. Tools, resources, and prompts are the model-facing contract and should not change unless the product design itself changes.
+
+2. Why does statelessness matter more for remote MCP servers?
+   Answer: Because remote requests may be routed across different workers or instances, so the protocol cannot rely on hidden in-memory connection state.
+
+3. What did the Day 7 HTTP verification prove?
+   Answer: It proved that the same ResearchOps server can be reached over a real Streamable HTTP URL, discovered remotely, and used by the CLI client without subprocess stdio.
+
+4. Why is a Dockerfile useful even before full production deployment?
+   Answer: It creates a reproducible runtime and gives the project a staging-style deployment artifact that can be tested consistently.
+
+5. Why is Day 7 not the same thing as full production deployment?
+   Answer: Because remote reachability alone is not enough. Authentication, TLS posture, security controls, reliability, observability, and actual hosting still remain for later days.
+
+#### References
+
+- MCP specification: https://modelcontextprotocol.io/specification/latest
+- MCP Python SDK docs: https://py.sdk.modelcontextprotocol.io/
+- OpenAI MCP guide: https://developers.openai.com/api/docs/guides/tools-connectors-mcp
+- MCP Inspector repository: https://github.com/modelcontextprotocol/inspector
+
 ## Module 4: Authentication, Security, and Reliability
 
 ### Day 8: Authentication and Authorization
@@ -829,6 +935,7 @@ An MCP client is the host-side component that discovers a server's capabilities,
 ### Day 13: Observability and Scaling
 
 ### Day 14: Advanced Features and Final Release
+
 
 
 

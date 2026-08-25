@@ -11,6 +11,7 @@ Current design state:
 - Day 4 introduced stable resources and reusable prompts.
 - Day 5 introduced SQLite persistence, a repository layer, and safe write operations.
 - Day 6 introduced a local Python CLI client for discovery, reads, prompts, and approval-gated write calls.
+- Day 7 introduced Streamable HTTP serving, an HTTP-aware client mode, and a first Dockerfile.
 
 ## Design Principles
 
@@ -36,9 +37,9 @@ Current design state:
 - `src/researchops_mcp/services/openalex.py`: OpenAlex integration and paper normalization.
 - `src/researchops_mcp/services/context.py`: resource/prompt rendering helpers.
 - `src/researchops_mcp/services/library.py`: Day 5 durable reading-list and note business logic.
-- src/researchops_mcp/repositories/sqlite.py: SQLite persistence and transaction boundary.
-- src/researchops_mcp/client_cli.py: packaged Day 6 stdio client implementation with discovery, reads, prompts, tool calls, and approval flow.
-- client/cli.py: thin roadmap-friendly client entry point.
+- `src/researchops_mcp/repositories/sqlite.py`: SQLite persistence and transaction boundary.
+- `src/researchops_mcp/client_cli.py`: packaged Day 6 stdio client implementation with discovery, reads, prompts, tool calls, and approval flow.
+- `client/cli.py`: thin roadmap-friendly client entry point.
 
 ## High-Level Diagram
 
@@ -369,6 +370,96 @@ Prompts remained intentionally separate from storage logic.
 They remain reusable reasoning scaffolds rather than turning into data-fetching tools.
 
 
+
+## Day 7 Transport Design
+
+### Transport Strategy
+
+Day 7 keeps one shared `MCPServer` capability factory and adds transport-aware startup instead of building a separate HTTP-only server.
+
+Supported startup modes now:
+- `stdio`
+- `streamable-http`
+
+This avoids duplicating tool, resource, and prompt registration logic.
+
+### Why One Server Factory Matters
+
+The ResearchOps interface should stay stable across transports.
+If `stdio` and HTTP were built by separate registration paths, drift would become more likely:
+- tool descriptions could diverge
+- prompt arguments could diverge
+- resource shapes could diverge
+
+Using one shared `create_server()` path avoids that class of problem.
+
+### HTTP Serving Shape
+
+The server now supports:
+- `server.run(transport="streamable-http", ...)` for direct serving
+- `create_streamable_http_app(...)` for ASGI app creation
+
+That gives two useful deployment paths:
+- direct local remote-style serving for verification
+- future embedding behind other ASGI deployment setups
+
+### Client Transport Design
+
+The Python client now supports:
+- `--connection-mode stdio`
+- `--connection-mode http`
+
+In stdio mode:
+- the client launches the server as a subprocess
+- `discover` stays separate from the initialized flow
+- later operations use the initialized path
+
+In HTTP mode:
+- the client reaches a running MCP URL
+- `discover` works on the remote path
+- later operations continue over the same HTTP transport without relying on the old subprocess lifecycle assumption
+
+### Request Flow: HTTP Tool Listing
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Client as Python CLI Client
+    participant Server as Streamable HTTP MCP Server
+
+    User->>Client: list-tools over HTTP
+    Client->>Server: discover @ /mcp
+    Server-->>Client: supported_versions + capabilities
+    Client->>Server: tools/list @ /mcp
+    Server-->>Client: tool metadata
+    Client-->>User: JSON output with names, schemas, and write flags
+```
+
+### Deployment Shape Today
+
+The Dockerfile currently:
+- installs the package from the repository
+- exposes port 8000`r
+- starts python src/server.py --transport streamable-http --host 0.0.0.0 --stateless-http`r
+- relies on the PORT environment variable for the actual bound HTTP port in deployment environments such as Render
+
+This is enough for local container-style serving, but it is not yet a finished production deployment story.
+
+
+### Render Deployment Notes
+
+For the free Day 7 staging path, the project is prepared for Render with:
+- `PORT`-driven HTTP binding
+- `render.yaml` for a free Docker-based web service
+- `DATABASE_PATH=/tmp/researchops.db` as explicit temporary staging storage
+
+This keeps the deployment simple, but it also means persistent library state is not yet solved for free hosting. That is acceptable for Day 7 staging, but not for later production-style persistence.
+### Known Day 7 Gaps
+
+- No real external staging host has been provisioned yet.
+- Reverse proxy and TLS posture are not yet implemented.
+- Remote Inspector has only been validated against local HTTP, not a non-local staging URL.
+- Supported AI host integration is still pending.
 ## Day 6 Client Design
 
 ### Client Responsibilities
@@ -517,5 +608,8 @@ Minimum daily update rule:
 - `docs/decisions.md`
 - `docs/project-spec.md`
 - `docs/threat-model.md`
+
+
+
 
 

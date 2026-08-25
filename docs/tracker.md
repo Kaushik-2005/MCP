@@ -18,7 +18,7 @@
 | 4 | Context and Persistence | Resources and prompts | Completed | Discoverable paper and reading-list resources plus reusable prompts | `pytest` passed with 10 tests; MCP Inspector verified Day 4 resources and prompts interactively; in-process MCP client listed resource templates and prompts, read `reading-list://starter-mcp`, and rendered `compare_papers`; learner explained tool vs resource vs prompt boundaries and why context-size limits matter | 4 |
 | 5 | Context and Persistence | Storage and write operations | Completed | Persistent SQLite-backed MCP application with write safety | `pytest` passed with 14 tests; Inspector verified `create_reading_list`, `add_paper_to_list`, `add_note`, `update_note`, and `delete_note`; learner explained repository/service split, idempotency, optimistic concurrency, and stable interface shape | 4 |
 | 6 | Client and Remote Transport | Build an MCP client | Completed | Python CLI client for ResearchOps MCP | `pytest` passed with 18 tests; CLI verified discovery, tool listing, resource reads, tool-error handling, denied write approval, and approved write execution on 2026-08-25; learner explained why discovery stays separate from the initialized request flow | 5 |
-| 7 | Client and Remote Transport | Streamable HTTP and deployment | Not Started | Remotely accessible staging MCP server | — | — |
+| 7 | Client and Remote Transport | Streamable HTTP and deployment | In Progress | Remotely accessible staging MCP server | `pytest` passed with 23 tests; stdio still works; HTTP server verified at `http://127.0.0.1:8765/mcp`; Dockerfile added; full external staging deployment still pending | 3 |
 | 8 | Security and Reliability | Authentication and authorization | Not Started | Authenticated multi-user remote server | — | — |
 | 9 | Security and Reliability | MCP security | Not Started | Security checklist, threat model, adversarial tests | — | — |
 | 10 | Security and Reliability | Reliability engineering | Not Started | Predictable behavior during dependency failures | — | — |
@@ -113,4 +113,19 @@
 - Decisions made: Keep the Day 6 client on local stdio; use a small explicit write-tool approval policy until richer server-side annotations exist; keep the packaged implementation under `src/` and leave `client/cli.py` as a thin entry point
 - Topics to revisit: Multiple-server isolation, lazy loading, and whether later server metadata should replace the local write-tool policy table
 - Next action: Begin Day 7 by adding Streamable HTTP transport and preparing for remote-style verification
+
+### 2026-08-25 Day 7 Kickoff
+
+- Topics studied: Day 7 kickoff; Streamable HTTP transport, stateless remote serving, containerization, and deployment prerequisites
+- Work implemented: Reviewed the roadmap, current server transport shape, packaging, and missing deployment files before starting Day 7
+- Tests executed: None yet for Day 7
+- Results: Confirmed Day 7 starts from a stdio-only server; no `Dockerfile` exists yet
+- Problems encountered: None
+- Decisions made: Start by teaching the Day 7 transport model before adding HTTP server code
+- Topics to revisit: Exact SDK HTTP serving API and how to test remote Inspector against the local staging shape
+- Next action: Teach Day 7 concepts, validate understanding, then add Streamable HTTP support
+- Work implemented: Added Render deployment preparation including `render.yaml`, env-aware `PORT` and `DATABASE_PATH` settings, and `.dockerignore` for a smaller Docker build context
+- Tests executed: `pytest`; `python src/server.py --help`; generated `render.yaml` reviewed for free Docker web-service settings
+- Results: 24 tests passed; server now reads Render-style environment variables; the container and server startup are ready for a free Render web service using temporary SQLite at `/tmp/researchops.db`
+- Topics to revisit: Real non-local Render URL verification and supported AI host connection still remain before Day 7 can be marked complete
 

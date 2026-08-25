@@ -1,4 +1,4 @@
-"""Small stdio MCP client for the ResearchOps learning project."""
+"""MCP client for the ResearchOps learning project."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from typing import Any
 
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.client.streamable_http import streamable_http_client
 
 WRITE_TOOLS = {
     "create_reading_list",
@@ -23,22 +24,35 @@ WRITE_TOOLS = {
 
 @dataclass(slots=True)
 class ClientConfig:
-    command: str
-    args: list[str]
-    cwd: str | None
+    connection_mode: str
+    server_command: str
+    server_args: list[str]
+    server_cwd: str | None
+    server_url: str
     auto_approve: bool
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="ResearchOps MCP CLI client")
-    parser.add_argument("--server-command", default="python", help="Command used to launch the local MCP server.")
+    parser.add_argument(
+        "--connection-mode",
+        choices=["stdio", "http"],
+        default="stdio",
+        help="How the client should reach the MCP server.",
+    )
+    parser.add_argument("--server-command", default="python", help="Command used to launch the local stdio MCP server.")
     parser.add_argument(
         "--server-arg",
         action="append",
         default=["src/server.py"],
-        help="Argument passed to the server command. Repeat for multiple args.",
+        help="Argument passed to the stdio server command. Repeat for multiple args.",
     )
-    parser.add_argument("--server-cwd", default=None, help="Optional working directory for the MCP server process.")
+    parser.add_argument("--server-cwd", default=None, help="Optional working directory for the stdio server process.")
+    parser.add_argument(
+        "--server-url",
+        default="http://127.0.0.1:8000/mcp",
+        help="Base URL for the Streamable HTTP MCP server.",
+    )
     parser.add_argument("--yes", action="store_true", help="Auto-approve write tools.")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -100,35 +114,57 @@ def parse_scalar(raw_value: str) -> Any:
 
 
 def build_config(args: argparse.Namespace) -> ClientConfig:
-    return ClientConfig(command=args.server_command, args=args.server_arg, cwd=args.server_cwd, auto_approve=args.yes)
+    return ClientConfig(
+        connection_mode=args.connection_mode,
+        server_command=args.server_command,
+        server_args=args.server_arg,
+        server_cwd=args.server_cwd,
+        server_url=args.server_url,
+        auto_approve=args.yes,
+    )
 
 
 async def run_cli(args: argparse.Namespace) -> int:
     config = build_config(args)
-    params = StdioServerParameters(command=config.command, args=config.args, cwd=config.cwd)
+    if config.connection_mode == "http":
+        return await run_http_cli(args, config)
+    return await run_stdio_cli(args, config)
 
+
+async def run_stdio_cli(args: argparse.Namespace, config: ClientConfig) -> int:
+    params = StdioServerParameters(command=config.server_command, args=config.server_args, cwd=config.server_cwd)
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             if args.command == "discover":
                 return await run_discover(session)
-
             await session.initialize()
+            return await dispatch_initialized_command(session, args, auto_approve=config.auto_approve)
 
-            if args.command == "list-tools":
-                return await run_list_tools(session)
-            if args.command == "list-resource-templates":
-                return await run_list_resource_templates(session)
-            if args.command == "list-prompts":
-                return await run_list_prompts(session)
-            if args.command == "read-resource":
-                return await run_read_resource(session, args.uri)
-            if args.command == "get-prompt":
-                prompt_args = parse_key_value_pairs(args.arg)
-                return await run_get_prompt(session, args.name, prompt_args)
-            if args.command == "call-tool":
-                tool_args = parse_key_value_pairs(args.arg)
-                return await run_call_tool(session, args.name, tool_args, auto_approve=config.auto_approve)
 
+async def run_http_cli(args: argparse.Namespace, config: ClientConfig) -> int:
+    async with streamable_http_client(config.server_url) as parts:
+        read, write = parts[0], parts[1]
+        async with ClientSession(read, write) as session:
+            if args.command == "discover":
+                return await run_discover(session)
+            return await dispatch_initialized_command(session, args, auto_approve=config.auto_approve)
+
+
+async def dispatch_initialized_command(session: ClientSession, args: argparse.Namespace, *, auto_approve: bool) -> int:
+    if args.command == "list-tools":
+        return await run_list_tools(session)
+    if args.command == "list-resource-templates":
+        return await run_list_resource_templates(session)
+    if args.command == "list-prompts":
+        return await run_list_prompts(session)
+    if args.command == "read-resource":
+        return await run_read_resource(session, args.uri)
+    if args.command == "get-prompt":
+        prompt_args = parse_key_value_pairs(args.arg)
+        return await run_get_prompt(session, args.name, prompt_args)
+    if args.command == "call-tool":
+        tool_args = parse_key_value_pairs(args.arg)
+        return await run_call_tool(session, args.name, tool_args, auto_approve=auto_approve)
     raise ValueError(f"Unknown command: {args.command}")
 
 
@@ -298,4 +334,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
