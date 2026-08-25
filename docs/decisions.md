@@ -79,3 +79,17 @@
 - Trade-offs: SQLite is not the final deployment database and still assumes a single-user local environment for now.
 - Consequences: Later phases can replace or extend the storage backend while preserving the MCP interface and most service-layer behavior.
 
+## Decision: Start The Day 6 Client As A Local Stdio CLI
+
+- Date: 2026-08-25
+- Status: Accepted
+- Context: Day 6 requires building a client that can discover capabilities, read resources, invoke tools, and gate writes before moving to remote transport on Day 7.
+- Options considered:
+  - Start directly with remote HTTP client behavior
+  - Use only one-off inline scripts for client verification
+  - Build a reusable local stdio CLI client first
+- Decision: Build a reusable Python CLI client over local stdio first, package the implementation under `src/researchops_mcp/client_cli.py`, and keep `client/cli.py` as a thin entry point.
+- Why: This isolates MCP client behavior from remote transport complexity, creates a reusable learning tool, and keeps the Day 6 implementation aligned with the current local server setup.
+- Trade-offs: The client uses a temporary explicit local write-tool policy and does not yet exercise remote transport concerns.
+- Consequences: Day 7 can build on a working client mental model instead of combining client learning with HTTP deployment changes in one step.
+

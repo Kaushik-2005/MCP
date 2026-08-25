@@ -26,4 +26,7 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[project.scripts]
+researchops-client = "researchops_mcp.client_cli:main"
+
 

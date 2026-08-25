@@ -4,7 +4,7 @@ ResearchOps MCP is a learning project for building a production-style Model Cont
 
 ## Current Status
 
-The project is in Day 6 of the roadmap. The local MCP server now supports OpenAlex-backed paper tools, stable paper and reading-list resources, reusable prompt templates, and SQLite-backed write tools for reading lists and notes. The next step is to build a Python MCP client on top of the completed local server.
+The project is in Day 6 of the roadmap. The local MCP server now supports OpenAlex-backed paper tools, stable paper and reading-list resources, reusable prompt templates, SQLite-backed write tools for reading lists and notes, and a local Python MCP client for discovery, resource reads, prompts, and approval-gated tool calls.
 
 ## Planned Capabilities
 
@@ -51,11 +51,27 @@ Run the server through MCP Inspector:
 npx @modelcontextprotocol/inspector@latest python src/server.py
 ```
 
+Run the local client for capability discovery:
 
+```powershell
+python client/cli.py discover
+```
 
+List tools:
 
+```powershell
+python client/cli.py list-tools
+```
 
+Read a paper resource:
 
+```powershell
+python client/cli.py read-resource paper://W7129030749
+```
 
+Call a write tool with explicit approval bypass for scripted use:
 
+```powershell
+python client/cli.py --yes call-tool create_reading_list --arg name=MyList --arg idempotency_key=my-key-1
+```
 

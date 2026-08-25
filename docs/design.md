@@ -10,6 +10,7 @@ Current design state:
 - Day 3 introduced a real OpenAlex-backed read-only paper layer.
 - Day 4 introduced stable resources and reusable prompts.
 - Day 5 introduced SQLite persistence, a repository layer, and safe write operations.
+- Day 6 introduced a local Python CLI client for discovery, reads, prompts, and approval-gated write calls.
 
 ## Design Principles
 
@@ -23,6 +24,7 @@ Current design state:
 
 ### Layer Summary
 
+- Client layer: local Python CLI for discovery, reads, prompts, tool calls, approval gating, and latency reporting.
 - Transport layer: MCP tools, resources, and prompts exposed by the server.
 - Service layer: business rules, validation, idempotency, optimistic concurrency, and orchestration.
 - Repository layer: SQLite schema, transactions, and durable reads/writes.
@@ -34,13 +36,16 @@ Current design state:
 - `src/researchops_mcp/services/openalex.py`: OpenAlex integration and paper normalization.
 - `src/researchops_mcp/services/context.py`: resource/prompt rendering helpers.
 - `src/researchops_mcp/services/library.py`: Day 5 durable reading-list and note business logic.
-- `src/researchops_mcp/repositories/sqlite.py`: SQLite persistence and transaction boundary.
+- src/researchops_mcp/repositories/sqlite.py: SQLite persistence and transaction boundary.
+- src/researchops_mcp/client_cli.py: packaged Day 6 stdio client implementation with discovery, reads, prompts, tool calls, and approval flow.
+- client/cli.py: thin roadmap-friendly client entry point.
 
 ## High-Level Diagram
 
 ```mermaid
 flowchart TD
-    User[User or MCP Client] --> MCP[MCP Server Transport Layer\nserver.py]
+    User[User] --> Client[Python MCP Client\nclient/cli.py + client_cli.py]
+    Client --> MCP[MCP Server Transport Layer\nserver.py]
 
     MCP --> PaperService[Paper Service\nopenalex.py]
     MCP --> LibraryService[Research Library Service\nlibrary.py]
@@ -363,6 +368,102 @@ Prompts remained intentionally separate from storage logic.
 
 They remain reusable reasoning scaffolds rather than turning into data-fetching tools.
 
+
+## Day 6 Client Design
+
+### Client Responsibilities
+
+The Day 6 client is intentionally small, but it owns important MCP behavior that the server should not own:
+- capability discovery
+- listing tools, resource templates, and prompts
+- reading resources
+- invoking tools
+- gating write tools behind client approval
+- reporting status and latency
+
+This matters because MCP is not only about exposing server functions. The client determines how the server surface is discovered and used.
+
+### Why The Client Uses Local Stdio First
+
+The Day 6 client launches the local server process directly with `python src/server.py` and communicates over stdio.
+That keeps the learning scope narrow:
+- no HTTP transport yet
+- no TLS or reverse proxy concerns yet
+- no remote auth yet
+- direct focus on MCP message flow and client behavior
+
+### Discovery Versus Initialized Operations
+
+One important Day 6 lesson was that capability discovery must stay separate from the initialized request path in this local setup.
+
+Observed issue:
+- the first client version called `initialize()` and then `discover()`
+- the server rejected that combination with a protocol-level error about the 2026-07-28 discovery envelope
+
+Final design:
+- `discover` is handled before `initialize()`
+- list and invocation operations use the initialized path
+
+This is a real client-side protocol nuance, not just an implementation detail.
+
+### Write Approval Policy
+
+The current server does not yet expose richer structured annotations that cleanly label write tools.
+For Day 6, the client therefore uses a small explicit local write-tool policy set:
+- `create_reading_list`
+- `add_paper_to_list`
+- `add_note`
+- `update_note`
+- `delete_note`
+
+When one of these tools is called:
+1. the client prints the tool name
+2. the client prints the parsed arguments
+3. the client asks for approval unless `--yes` is set
+4. the client either denies locally or forwards the call to the server
+
+This is a temporary but clear policy until later metadata or richer host controls exist.
+
+### Request Flow: `create_reading_list` Through The Client
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Client as Python CLI Client
+    participant Server as ResearchOps MCP Server
+    participant Service as Library Service
+    participant Repo as SQLite Repository
+    participant DB as SQLite
+
+    User->>Client: call-tool create_reading_list(...)
+    Client->>Client: classify as write tool
+    Client->>User: show arguments and ask approval
+    alt denied
+        User-->>Client: deny
+        Client-->>User: local denied result
+    else approved
+        User-->>Client: approve
+        Client->>Server: tools/call create_reading_list
+        Server->>Service: create_reading_list(...)
+        Service->>Repo: transaction and durable write
+        Repo->>DB: INSERT reading list
+        DB-->>Repo: commit
+        Server-->>Client: tool result
+        Client-->>User: status, latency, result
+    end
+```
+
+### Output Design
+
+The client prints JSON for machine-readable review and revision-friendly inspection.
+Each major action includes:
+- operation name
+- parsed arguments when relevant
+- status
+- latency in milliseconds
+- returned content
+
+That keeps the client useful both for manual learning and for future scripted checks.
 ## Testing Strategy Through Day 5
 
 ### Unit Tests
@@ -416,4 +517,5 @@ Minimum daily update rule:
 - `docs/decisions.md`
 - `docs/project-spec.md`
 - `docs/threat-model.md`
+
 

@@ -678,6 +678,138 @@ Day 5 turns an MCP demo server into a persistent application. The key design is 
 
 ### Day 6: Build an MCP Client
 
+#### Learning objectives
+
+- Understand the MCP client role separately from the MCP server role.
+- Understand capability discovery from the client side.
+- Understand how a client lists tools, resources, and prompts and then invokes them.
+- Understand the difference between protocol errors and tool errors from the client perspective.
+- Understand why a client may apply approval rules before invoking write tools.
+- Understand why local stdio client work should come before remote HTTP transport.
+
+#### Core concepts
+
+- The MCP client is the component that talks MCP to the server on behalf of a host or user workflow.
+- The client is responsible for discovery, invocation, approval handling, and result interpretation.
+- Discovery is not the same thing as invocation. A client should learn the server's capabilities before assuming what operations exist.
+- Tool errors and protocol errors are different failure classes and should be handled differently.
+- A client can apply additional policy, such as approval for state-changing tools, even though the server still owns authorization.
+- The same server can look very different depending on the quality of the client that sits in front of it.
+
+#### How it works
+
+1. The client starts the local ResearchOps MCP server over stdio.
+2. For capability discovery, the client sends `discover` before entering the initialized request flow.
+3. For normal operations, the client initializes the session and then lists tools, resource templates, or prompts.
+4. For read-only operations, the client can call a read tool or read a resource URI directly.
+5. For write tools, the client shows the tool name and arguments before execution and can approve or deny the request.
+6. The client records the operation name, success or failure status, and latency.
+7. Tool failures are returned as valid MCP tool results with error content, while protocol failures happen at the MCP interaction level itself.
+
+#### Example
+
+- `python client/cli.py discover` shows server info, supported protocol versions, capabilities, and instructions.
+- `python client/cli.py list-tools` shows the discovered tool surface and labels known write tools.
+- `python client/cli.py read-resource paper://W7129030749` reads one stable paper resource.
+- `python client/cli.py call-tool get_paper --arg paper_id=W999999999999999` returns a tool-level error result.
+- `python client/cli.py --yes call-tool create_reading_list --arg name=Day6ApprovedList --arg idempotency_key=day6-approved-1` performs an approved write through the client.
+
+#### Role in our project
+
+- Day 6 proves that ResearchOps is not just a server implementation; it also works from the client side.
+- The Python CLI client gives us a concrete host-side control surface for discovery, reads, and writes.
+- The client makes write intent visible before execution, which is an important safety boundary before Day 8 authorization.
+- The same client workflow becomes the conceptual base for Day 7 remote transport.
+
+#### Why it is designed this way
+
+- Starting with a local stdio client keeps the MCP concepts focused before adding HTTP, TLS, and deployment concerns.
+- Discovery is explicit so the client does not hard-code assumptions about the server surface.
+- Write approval belongs naturally on the client side because the client is closest to the user and host policy.
+- Latency and status logging matter even in a learning client because production MCP behavior is not only about correctness but also observability.
+- The Day 6 client uses a small explicit write-tool policy because the current server does not yet expose richer tool annotations for read-only versus write behavior.
+
+#### Alternatives and trade-offs
+
+- Jump straight to remote HTTP:
+  - More production-like.
+  - Adds transport complexity too early and makes client learning noisier.
+- Build only ad hoc inline scripts:
+  - Faster for one-off checks.
+  - Does not create a reusable client surface or approval workflow.
+- Infer write behavior from tool descriptions alone:
+  - Requires no local policy table.
+  - Fragile compared with explicit policy until richer metadata exists.
+- Delay client work until after deployment:
+  - Keeps focus on the server.
+  - Misses half of the MCP design problem, which is how clients discover and safely use the server.
+
+#### Failure modes
+
+- The client calls `initialize` and then tries to use `discover` on a connection path that expects the newer discovery envelope first.
+- The client treats a tool error as if the entire protocol failed.
+- The client silently performs a write without making the arguments visible to the user.
+- The client hard-codes assumptions about available tools and breaks when the server surface changes.
+- The client does not separate read flows from write flows and applies the same trust level to both.
+
+#### Common mistakes
+
+- Thinking the client is just a thin wrapper around `call_tool`.
+- Mixing discovery and initialized request flow incorrectly.
+- Assuming a valid MCP response always means the business operation succeeded.
+- Treating approval as a replacement for server-side authorization.
+- Skipping latency or status output because the client is "just for local learning."
+
+#### Security considerations
+
+- The client should make write intent visible before sending state-changing operations.
+- Approval on the client side helps prevent accidental writes but does not replace server authorization.
+- Tool descriptions, tool results, and resource content are still untrusted model-facing data.
+- Multiple-server use later will require stronger isolation so tools from one server do not get confused with another.
+- Discovery results should be treated as dynamic server metadata rather than permanent truth.
+
+#### Interview explanation
+
+An MCP client is the host-side component that discovers a server's capabilities, invokes tools, reads resources, retrieves prompts, and applies client policy such as write approval. In Day 6, ResearchOps adds a small stdio Python client that proves end-to-end MCP understanding: discovery, initialized operations, resource reads, tool calls, latency reporting, and clear separation between protocol errors and tool-level business failures.
+
+#### Questions for revision
+
+1. Why is Day 6 necessary if the server already works?
+   Answer: Because MCP is a two-sided protocol. A working server alone does not prove that we understand capability discovery, client policy, invocation flow, error handling, or write approval behavior.
+
+2. What is the difference between a protocol error and a tool error from the client perspective?
+   Answer: A protocol error means the MCP interaction itself is malformed, invalid, or unsupported. A tool error means the MCP request was valid but the business action failed, such as a missing paper or stale note version.
+
+3. Why should the client show arguments before calling write tools?
+   Answer: Because write tools change durable state. The client should make the write explicit so the user can catch mistakes and approve or deny the operation before execution.
+
+4. Why did the Day 6 client use a small explicit write-tool policy table?
+   Answer: Because the current server does not yet expose richer structured annotations for write behavior, so an explicit local policy is the clearest reliable way to gate approvals for now.
+
+5. Why did `discover` need separate handling from the initialized request flow?
+   Answer: Because on the working local setup, capability discovery uses the newer discovery envelope before the initialized handshake-style request path. Mixing those flows caused a protocol error, which the client had to handle correctly.
+
+#### Active recall review
+
+1. Question: Why is the MCP client not just a convenience wrapper around the server?
+   Answer: Because the client owns discovery, invocation sequencing, approval behavior, result handling, and policy decisions that shape how the server is actually used.
+
+2. Question: Why was the first `discover` implementation in the Day 6 client wrong?
+   Answer: It initialized the session and then tried to send a discovery-envelope request on the same flow. The local server path rejected that combination, which exposed the need to keep discovery separate from the initialized operations path.
+
+3. Question: Why is a denied write still a successful Day 6 verification outcome?
+   Answer: Because the client is supposed to control whether a state-changing tool is allowed to run. A denial proves the approval boundary works instead of blindly forwarding every request.
+
+4. Question: Why does the client record latency even though this is only a local stdio setup?
+   Answer: Because MCP production thinking includes observability from the beginning. Even a local learning client should show operation cost and status clearly.
+
+#### References
+
+- MCP specification: https://modelcontextprotocol.io/specification/latest
+- MCP Python SDK docs: https://py.sdk.modelcontextprotocol.io/
+- OpenAI MCP guide: https://developers.openai.com/api/docs/guides/tools-connectors-mcp
+- MCP Inspector repository: https://github.com/modelcontextprotocol/inspector
+
 ### Day 7: Streamable HTTP and Deployment
 
 ## Module 4: Authentication, Security, and Reliability
@@ -697,6 +829,7 @@ Day 5 turns an MCP demo server into a persistent application. The key design is 
 ### Day 13: Observability and Scaling
 
 ### Day 14: Advanced Features and Final Release
+
 
 
 
