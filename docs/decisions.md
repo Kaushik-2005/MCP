@@ -107,3 +107,31 @@
 - Trade-offs: The startup code becomes slightly more configurable, and client transport behavior must explicitly account for stdio versus HTTP lifecycle differences.
 - Consequences: ResearchOps can evolve transport and deployment shape without redesigning tools, resources, and prompts every time the serving path changes.
 
+
+## Decision: Use Free Render Staging With Temporary SQLite Storage For Day 7
+
+- Date: 2026-08-25
+- Status: Accepted
+- Context: Day 7 required a real remotely reachable Streamable HTTP MCP server, but the project is still in the learning and staging phase with a zero-cost hosting goal.
+- Options considered:
+  - Stop at local HTTP verification only
+  - Deploy to a free hosted Docker web service with temporary storage
+  - Introduce a paid persistent database and hosting stack immediately
+- Decision: Deploy the Streamable HTTP server to Render free hosting with Docker and use `DATABASE_PATH=/tmp/researchops.db` as explicit staging-only storage.
+- Why: This satisfies the Day 7 remote deployment learning goal with minimal operational cost while keeping the transport, container, and remote verification work real.
+- Trade-offs: Free Render can cold-start and the SQLite file under `/tmp` is ephemeral, so durable remote user state is not guaranteed.
+- Consequences: Day 7 can be completed with real public MCP verification, but later phases must replace temporary storage and add stronger production controls.
+
+## Decision: Use SDK-Based Bearer Auth With Demo Tokens Before Full OAuth Integration
+
+- Date: 2026-08-27
+- Status: Accepted
+- Context: Day 8 required the remote MCP server to enforce authentication, scopes, and per-user authorization, but a full external OAuth deployment would add significant setup and distract from the protocol-learning goal.
+- Options considered:
+  - Delay auth entirely until a later day
+  - Add a custom API-key or ad hoc bearer-header scheme
+  - Use the MCP Python SDK auth surface with a small demo token verifier and explicit scopes
+- Decision: Use the official MCP Python SDK auth hooks and middleware for remote HTTP protection, with a local demo token verifier that models user identity, scopes, issuer information, and resource-server binding.
+- Why: This teaches the correct MCP authorization shape, keeps the server aligned with the spec and SDK, and lets us verify `401`, `403`, scope checks, and tenant ownership without needing a full live authorization server yet.
+- Trade-offs: The demo verifier is not a production identity system and does not replace a real OAuth authorization code flow, token refresh flow, or external issuer integration.
+- Consequences: The project now has the right transport and handler boundaries for auth, and a later production phase can swap the verifier for a real issuer-backed implementation without redesigning the MCP capability surface.

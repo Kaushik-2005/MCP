@@ -52,17 +52,23 @@ def test_build_config_defaults_to_stdio_mode() -> None:
     assert config.server_command == "python"
     assert config.server_args == ["src/server.py"]
     assert config.server_url == "http://127.0.0.1:8000/mcp"
+    assert config.bearer_token is None
 
 
 def test_build_config_accepts_http_mode() -> None:
-    args = build_parser().parse_args([
-        "--connection-mode",
-        "http",
-        "--server-url",
-        "http://127.0.0.1:8765/mcp",
-        "discover",
-    ])
+    args = build_parser().parse_args(
+        [
+            "--connection-mode",
+            "http",
+            "--server-url",
+            "http://127.0.0.1:8765/mcp",
+            "--bearer-token",
+            "researchops-alice-full",
+            "discover",
+        ]
+    )
     config = build_config(args)
 
     assert config.connection_mode == "http"
     assert config.server_url == "http://127.0.0.1:8765/mcp"
+    assert config.bearer_token == "researchops-alice-full"

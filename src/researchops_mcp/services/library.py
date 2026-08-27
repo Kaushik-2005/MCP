@@ -1,4 +1,4 @@
-"""Business services for Day 5 reading-list and note persistence."""
+"""Business services for durable reading-list and note persistence."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ LIST_ID_PATTERN = re.compile(r"^[a-z0-9-]{3,40}$")
 
 
 class LibraryServiceError(Exception):
-    """Base error for Day 5 reading-list and note operations."""
+    """Base error for reading-list and note operations."""
 
 
 class ValidationError(LibraryServiceError):
@@ -36,12 +36,12 @@ class ConflictError(LibraryServiceError):
 
 
 class ResearchLibraryService:
-    """Day 5 business logic for durable reading lists and notes."""
+    """Business logic for durable reading lists and notes."""
 
     def __init__(self, repository: SQLiteRepository, paper_service: PaperService, *, user_id: str = DEFAULT_USER_ID) -> None:
         self._repository = repository
         self._paper_service = paper_service
-        self._user_id = user_id
+        self._default_user_id = user_id
 
     @property
     def repository(self) -> SQLiteRepository:
@@ -49,7 +49,7 @@ class ResearchLibraryService:
 
     def ensure_demo_data(self) -> None:
         with self._repository.transaction() as conn:
-            if self._repository.has_reading_list(conn, "starter-mcp", user_id=self._user_id):
+            if self._repository.has_reading_list(conn, "starter-mcp", user_id=self._default_user_id):
                 return
         self._seed_demo_list(
             "starter-mcp",
@@ -67,11 +67,12 @@ class ResearchLibraryService:
     def _seed_demo_list(self, list_id: str, name: str, description: str, paper_ids: list[str]) -> None:
         now = utc_now()
         with self._repository.transaction() as conn:
-            if not self._repository.has_reading_list(conn, list_id, user_id=self._user_id):
+            self._repository.ensure_user(conn, user_id=self._default_user_id, display_name="Local Learner")
+            if not self._repository.has_reading_list(conn, list_id, user_id=self._default_user_id):
                 self._repository.create_reading_list(
                     conn,
                     list_id=list_id,
-                    user_id=self._user_id,
+                    user_id=self._default_user_id,
                     name=name,
                     description=description,
                     created_at=now,
@@ -79,9 +80,16 @@ class ResearchLibraryService:
             for paper_id in paper_ids:
                 paper = self._paper_service.get_paper(paper_id)
                 self._repository.save_paper(conn, paper, updated_at=now)
-                self._repository.add_paper_to_list(conn, list_id=list_id, paper_id=paper["paper_id"], added_at=now)
+                self._repository.add_paper_to_list(
+                    conn,
+                    list_id=list_id,
+                    paper_id=paper["paper_id"],
+                    user_id=self._default_user_id,
+                    added_at=now,
+                )
 
-    def create_reading_list(self, *, name: str, description: str, idempotency_key: str) -> dict[str, Any]:
+    def create_reading_list(self, *, name: str, description: str, idempotency_key: str, user_id: str | None = None) -> dict[str, Any]:
+        effective_user_id = self._effective_user_id(user_id)
         normalized_name = name.strip()
         normalized_description = description.strip()
         if not normalized_name:
@@ -91,12 +99,13 @@ class ResearchLibraryService:
         now = utc_now()
         list_id = self._generate_list_id(normalized_name)
         with self._repository.transaction() as conn:
+            self._repository.ensure_user(conn, user_id=effective_user_id, display_name=effective_user_id.title())
             if existing := self._repository.get_idempotency_result(conn, operation, idempotency_key):
                 return existing
             created = self._repository.create_reading_list(
                 conn,
                 list_id=list_id,
-                user_id=self._user_id,
+                user_id=effective_user_id,
                 name=normalized_name,
                 description=normalized_description,
                 created_at=now,
@@ -106,7 +115,8 @@ class ResearchLibraryService:
             self._repository.store_idempotency_result(conn, operation=operation, idempotency_key=idempotency_key, response=response, created_at=now)
             return response
 
-    def add_paper_to_list(self, *, list_id: str, paper_id: str, idempotency_key: str) -> dict[str, Any]:
+    def add_paper_to_list(self, *, list_id: str, paper_id: str, idempotency_key: str, user_id: str | None = None) -> dict[str, Any]:
+        effective_user_id = self._effective_user_id(user_id)
         normalized_list_id = self._normalize_list_id(list_id)
         normalized_paper_id = normalize_paper_id(paper_id)
         self._validate_idempotency_key(idempotency_key)
@@ -118,7 +128,13 @@ class ResearchLibraryService:
                 return existing
             self._repository.save_paper(conn, paper, updated_at=now)
             try:
-                added = self._repository.add_paper_to_list(conn, list_id=normalized_list_id, paper_id=paper["paper_id"], added_at=now)
+                added = self._repository.add_paper_to_list(
+                    conn,
+                    list_id=normalized_list_id,
+                    paper_id=paper["paper_id"],
+                    user_id=effective_user_id,
+                    added_at=now,
+                )
             except RepositoryNotFoundError as exc:
                 raise NotFoundError(str(exc)) from exc
             response = {
@@ -132,7 +148,8 @@ class ResearchLibraryService:
             self._repository.store_idempotency_result(conn, operation=operation, idempotency_key=idempotency_key, response=response, created_at=now)
             return response
 
-    def add_note(self, *, list_id: str, paper_id: str, content: str, idempotency_key: str) -> dict[str, Any]:
+    def add_note(self, *, list_id: str, paper_id: str, content: str, idempotency_key: str, user_id: str | None = None) -> dict[str, Any]:
+        effective_user_id = self._effective_user_id(user_id)
         normalized_list_id = self._normalize_list_id(list_id)
         normalized_paper_id = normalize_paper_id(paper_id)
         normalized_content = content.strip()
@@ -145,14 +162,19 @@ class ResearchLibraryService:
         with self._repository.transaction() as conn:
             if existing := self._repository.get_idempotency_result(conn, operation, idempotency_key):
                 return existing
-            if not self._repository.has_reading_list(conn, normalized_list_id, user_id=self._user_id):
+            if not self._repository.has_reading_list(conn, normalized_list_id, user_id=effective_user_id):
                 raise NotFoundError(f"Reading list '{normalized_list_id}' was not found.")
-            if not self._repository.reading_list_contains_paper(conn, list_id=normalized_list_id, paper_id=normalized_paper_id):
+            if not self._repository.reading_list_contains_paper(
+                conn,
+                list_id=normalized_list_id,
+                paper_id=normalized_paper_id,
+                user_id=effective_user_id,
+            ):
                 raise ValidationError("paper_id must already be present in the reading list before adding a note.")
             created = self._repository.create_note(
                 conn,
                 note_id=note_id,
-                user_id=self._user_id,
+                user_id=effective_user_id,
                 list_id=normalized_list_id,
                 paper_id=normalized_paper_id,
                 content=normalized_content,
@@ -163,7 +185,8 @@ class ResearchLibraryService:
             self._repository.store_idempotency_result(conn, operation=operation, idempotency_key=idempotency_key, response=response, created_at=now)
             return response
 
-    def update_note(self, *, note_id: str, content: str, expected_version: int, idempotency_key: str) -> dict[str, Any]:
+    def update_note(self, *, note_id: str, content: str, expected_version: int, idempotency_key: str, user_id: str | None = None) -> dict[str, Any]:
+        effective_user_id = self._effective_user_id(user_id)
         normalized_note_id = note_id.strip()
         normalized_content = content.strip()
         if not normalized_note_id:
@@ -182,7 +205,7 @@ class ResearchLibraryService:
                 updated = self._repository.update_note(
                     conn,
                     note_id=normalized_note_id,
-                    user_id=self._user_id,
+                    user_id=effective_user_id,
                     content=normalized_content,
                     expected_version=expected_version,
                     updated_at=now,
@@ -196,7 +219,8 @@ class ResearchLibraryService:
             self._repository.store_idempotency_result(conn, operation=operation, idempotency_key=idempotency_key, response=response, created_at=now)
             return response
 
-    def delete_note(self, *, note_id: str, expected_version: int, confirm: bool, idempotency_key: str) -> dict[str, Any]:
+    def delete_note(self, *, note_id: str, expected_version: int, confirm: bool, idempotency_key: str, user_id: str | None = None) -> dict[str, Any]:
+        effective_user_id = self._effective_user_id(user_id)
         normalized_note_id = note_id.strip()
         if not normalized_note_id:
             raise ValidationError("note_id must not be empty.")
@@ -214,7 +238,7 @@ class ResearchLibraryService:
                 deleted = self._repository.delete_note(
                     conn,
                     note_id=normalized_note_id,
-                    user_id=self._user_id,
+                    user_id=effective_user_id,
                     expected_version=expected_version,
                     deleted_at=now,
                 )
@@ -227,12 +251,19 @@ class ResearchLibraryService:
             self._repository.store_idempotency_result(conn, operation=operation, idempotency_key=idempotency_key, response=response, created_at=now)
             return response
 
-    def get_reading_list(self, list_id: str) -> dict[str, Any]:
+    def get_reading_list(self, list_id: str, *, user_id: str | None = None) -> dict[str, Any]:
+        effective_user_id = self._effective_user_id(user_id)
         normalized_list_id = self._normalize_list_id(list_id)
         try:
-            return self._repository.get_reading_list(normalized_list_id, user_id=self._user_id)
+            return self._repository.get_reading_list(normalized_list_id, user_id=effective_user_id)
         except RepositoryNotFoundError as exc:
             raise NotFoundError(str(exc)) from exc
+
+    def _effective_user_id(self, user_id: str | None) -> str:
+        normalized = (user_id or self._default_user_id).strip()
+        if not normalized:
+            raise ValidationError("user_id must not be empty.")
+        return normalized
 
     def _record_write(
         self,

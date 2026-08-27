@@ -1,4 +1,4 @@
-"""Day 7 transport-ready MCP server for the ResearchOps learning project."""
+"""Day 8 auth-aware MCP server for the ResearchOps learning project."""
 
 from __future__ import annotations
 
@@ -9,6 +9,18 @@ from typing import Any
 
 from mcp.server import MCPServer
 
+from researchops_mcp.auth import (
+    DEFAULT_AUTH_ENABLED,
+    DEFAULT_AUTH_ISSUER_URL,
+    DEFAULT_RESOURCE_SERVER_URL,
+    DemoTokenVerifier,
+    ForbiddenError,
+    ScopeEnforcementMiddleware,
+    build_auth_settings,
+    current_user_id,
+    require_scope,
+    seed_known_users,
+)
 from researchops_mcp.repositories.sqlite import SQLiteRepository
 from researchops_mcp.services.context import (
     build_compare_papers_prompt,
@@ -28,24 +40,47 @@ DEFAULT_TRANSPORT = os.getenv("MCP_TRANSPORT", "stdio")
 DEFAULT_STATELESS_HTTP = os.getenv("MCP_STATELESS_HTTP", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def create_server(*, database_path: str | None = None, paper_service: PaperService | None = None) -> MCPServer:
+def create_server(
+    *,
+    database_path: str | None = None,
+    paper_service: PaperService | None = None,
+    auth_enabled: bool = DEFAULT_AUTH_ENABLED,
+    resource_server_url: str = DEFAULT_RESOURCE_SERVER_URL,
+    auth_issuer_url: str = DEFAULT_AUTH_ISSUER_URL,
+) -> MCPServer:
     resolved_paper_service = paper_service or PaperService(OpenAlexClient())
     repository = SQLiteRepository(database_path or DEFAULT_DB_PATH)
+    seed_known_users(repository)
     library_service = ResearchLibraryService(repository, resolved_paper_service)
     library_service.ensure_demo_data()
 
+    auth_settings = None
+    token_verifier = None
+    if auth_enabled:
+        auth_settings = build_auth_settings(
+            issuer_url=auth_issuer_url,
+            resource_server_url=resource_server_url,
+        )
+        token_verifier = DemoTokenVerifier(
+            issuer_url=auth_issuer_url,
+            resource_server_url=resource_server_url,
+        )
+
     server = MCPServer(
         name="researchops-mcp",
-        version="0.5.0",
+        version="0.6.0",
         instructions=(
             "ResearchOps MCP exposes OpenAlex-backed paper tools, stable paper and reading-list resources, "
-            "reusable prompts, persistent write tools for reading lists and notes, and Day 7 Streamable HTTP transport. "
-            "Use read tools and resources for retrieval, and use write tools for state changes with idempotency keys."
+            "reusable prompts, persistent write tools for reading lists and notes, Streamable HTTP transport, "
+            "and Day 8 authenticated multi-user request handling. Use read tools and resources for retrieval, "
+            "and use write tools for state changes with idempotency keys and appropriate scopes."
         ),
+        auth=auth_settings,
+        token_verifier=token_verifier,
     )
 
     @server.tool()
-    def health_check() -> dict[str, str]:
+    def health_check() -> dict[str, str | bool]:
         """Check whether the ResearchOps MCP server is reachable."""
         return {
             "status": "ok",
@@ -53,11 +88,13 @@ def create_server(*, database_path: str | None = None, paper_service: PaperServi
             "paper_source": "OpenAlex",
             "storage": "SQLite",
             "database_path": repository.db_path,
+            "auth_enabled": auth_enabled,
         }
 
     @server.tool()
     def search_papers(query: str, limit: int = 5, page: int = 1, search_mode: str = "balanced") -> dict[str, Any]:
         """Search OpenAlex papers by keyword."""
+        require_scope("papers:read")
         try:
             return resolved_paper_service.search_papers(query=query, page=page, limit=limit, search_mode=search_mode)
         except PaperServiceError as exc:
@@ -66,6 +103,7 @@ def create_server(*, database_path: str | None = None, paper_service: PaperServi
     @server.tool()
     def get_paper(paper_id: str) -> dict[str, Any]:
         """Retrieve one OpenAlex paper by stable identifier."""
+        require_scope("papers:read")
         try:
             return resolved_paper_service.get_paper(paper_id)
         except PaperServiceError as exc:
@@ -74,6 +112,7 @@ def create_server(*, database_path: str | None = None, paper_service: PaperServi
     @server.tool()
     def export_bibtex(paper_id: str) -> dict[str, str]:
         """Export a single paper citation in BibTeX format."""
+        require_scope("papers:read")
         try:
             return resolved_paper_service.export_bibtex(paper_id)
         except PaperServiceError as exc:
@@ -82,41 +121,74 @@ def create_server(*, database_path: str | None = None, paper_service: PaperServi
     @server.tool()
     def create_reading_list(name: str, idempotency_key: str, description: str = "") -> dict[str, Any]:
         """Create a persistent reading list. This is a write action and must include a stable idempotency key."""
+        require_scope("lists:write")
         try:
-            return library_service.create_reading_list(name=name, description=description, idempotency_key=idempotency_key)
-        except (LibraryServiceError, PaperServiceError) as exc:
+            return library_service.create_reading_list(
+                name=name,
+                description=description,
+                idempotency_key=idempotency_key,
+                user_id=current_user_id(),
+            )
+        except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
             raise ValueError(str(exc)) from exc
 
     @server.tool()
     def add_paper_to_list(list_id: str, paper_id: str, idempotency_key: str) -> dict[str, Any]:
         """Add one paper to an existing reading list. Use only after the list already exists."""
+        require_scope("lists:write")
         try:
-            return library_service.add_paper_to_list(list_id=list_id, paper_id=paper_id, idempotency_key=idempotency_key)
-        except (LibraryServiceError, PaperServiceError) as exc:
+            return library_service.add_paper_to_list(
+                list_id=list_id,
+                paper_id=paper_id,
+                idempotency_key=idempotency_key,
+                user_id=current_user_id(),
+            )
+        except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
             raise ValueError(str(exc)) from exc
 
     @server.tool()
     def add_note(list_id: str, paper_id: str, content: str, idempotency_key: str) -> dict[str, Any]:
         """Add a persistent note for a paper that is already in the specified reading list."""
+        require_scope("notes:write")
         try:
-            return library_service.add_note(list_id=list_id, paper_id=paper_id, content=content, idempotency_key=idempotency_key)
-        except (LibraryServiceError, PaperServiceError) as exc:
+            return library_service.add_note(
+                list_id=list_id,
+                paper_id=paper_id,
+                content=content,
+                idempotency_key=idempotency_key,
+                user_id=current_user_id(),
+            )
+        except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
             raise ValueError(str(exc)) from exc
 
     @server.tool()
     def update_note(note_id: str, content: str, expected_version: int, idempotency_key: str) -> dict[str, Any]:
         """Update an existing note using optimistic concurrency via expected_version."""
+        require_scope("notes:write")
         try:
-            return library_service.update_note(note_id=note_id, content=content, expected_version=expected_version, idempotency_key=idempotency_key)
-        except (LibraryServiceError, PaperServiceError) as exc:
+            return library_service.update_note(
+                note_id=note_id,
+                content=content,
+                expected_version=expected_version,
+                idempotency_key=idempotency_key,
+                user_id=current_user_id(),
+            )
+        except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
             raise ValueError(str(exc)) from exc
 
     @server.tool()
     def delete_note(note_id: str, expected_version: int, confirm: bool, idempotency_key: str) -> dict[str, Any]:
         """Delete a note only when confirm is true and the expected_version still matches."""
+        require_scope("notes:write")
         try:
-            return library_service.delete_note(note_id=note_id, expected_version=expected_version, confirm=confirm, idempotency_key=idempotency_key)
-        except (LibraryServiceError, PaperServiceError) as exc:
+            return library_service.delete_note(
+                note_id=note_id,
+                expected_version=expected_version,
+                confirm=confirm,
+                idempotency_key=idempotency_key,
+                user_id=current_user_id(),
+            )
+        except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
             raise ValueError(str(exc)) from exc
 
     @server.resource(
@@ -128,6 +200,7 @@ def create_server(*, database_path: str | None = None, paper_service: PaperServi
     )
     def paper_resource(paper_id: str) -> str:
         """Read one paper as a stable MCP resource."""
+        require_scope("papers:read")
         try:
             return build_paper_resource_document(resolved_paper_service, paper_id)
         except PaperServiceError as exc:
@@ -142,19 +215,24 @@ def create_server(*, database_path: str | None = None, paper_service: PaperServi
     )
     def reading_list_resource(list_id: str) -> str:
         """Read one persistent reading list as a stable MCP resource."""
+        require_scope("lists:read")
         try:
-            return build_reading_list_resource_document(library_service.get_reading_list(list_id))
-        except (LibraryServiceError, PaperServiceError) as exc:
+            return build_reading_list_resource_document(
+                library_service.get_reading_list(list_id, user_id=current_user_id())
+            )
+        except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
             raise ValueError(str(exc)) from exc
 
     @server.prompt()
     def compare_papers(paper_id_a: str, paper_id_b: str, focus: str = "overall contribution") -> str:
         """Reusable prompt for comparing two paper resources."""
+        require_scope("papers:read")
         return build_compare_papers_prompt(paper_id_a=paper_id_a, paper_id_b=paper_id_b, focus=focus)
 
     @server.prompt()
     def generate_literature_review(topic: str, paper_ids: str, objective: str = "summary") -> str:
         """Reusable prompt for drafting a literature review from selected paper resources."""
+        require_scope("papers:read")
         return build_literature_review_prompt(topic=topic, paper_ids=paper_ids, objective=objective)
 
     return server
@@ -169,14 +247,34 @@ def create_streamable_http_app(
     json_response: bool = False,
     stateless_http: bool = DEFAULT_STATELESS_HTTP,
     host: str = DEFAULT_HOST,
+    database_path: str | None = None,
+    auth_enabled: bool = DEFAULT_AUTH_ENABLED,
+    resource_server_url: str = DEFAULT_RESOURCE_SERVER_URL,
+    auth_issuer_url: str = DEFAULT_AUTH_ISSUER_URL,
 ):
     """Build a Streamable HTTP ASGI app for remote-style serving."""
-    return server.streamable_http_app(
+    app_server = create_server(
+        database_path=database_path,
+        auth_enabled=auth_enabled,
+        resource_server_url=resource_server_url,
+        auth_issuer_url=auth_issuer_url,
+    )
+    app = app_server.streamable_http_app(
         streamable_http_path=streamable_http_path,
         json_response=json_response,
         stateless_http=stateless_http,
         host=host,
     )
+    if auth_enabled:
+        app.add_middleware(
+            ScopeEnforcementMiddleware,
+            token_verifier=DemoTokenVerifier(
+                issuer_url=auth_issuer_url,
+                resource_server_url=resource_server_url,
+            ),
+            resource_server_url=resource_server_url,
+        )
+    return app
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -205,17 +303,38 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_STATELESS_HTTP,
         help="Enable stateless HTTP mode for remote-style serving.",
     )
+    parser.add_argument(
+        "--auth-enabled",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_AUTH_ENABLED,
+        help="Require bearer-token authentication on the HTTP transport.",
+    )
+    parser.add_argument(
+        "--resource-server-url",
+        default=DEFAULT_RESOURCE_SERVER_URL,
+        help="Canonical MCP server URL used for token audience and protected resource metadata.",
+    )
+    parser.add_argument(
+        "--auth-issuer-url",
+        default=DEFAULT_AUTH_ISSUER_URL,
+        help="Issuer URL advertised for Day 8 bearer-token verification.",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> None:
     """Run the MCP server over stdio or Streamable HTTP."""
     args = build_parser().parse_args(argv)
+    runtime_server = create_server(
+        auth_enabled=args.auth_enabled,
+        resource_server_url=args.resource_server_url,
+        auth_issuer_url=args.auth_issuer_url,
+    )
     if args.transport == "stdio":
-        server.run(transport="stdio")
+        runtime_server.run(transport="stdio")
         return
 
-    server.run(
+    runtime_server.run(
         transport="streamable-http",
         host=args.host,
         port=args.port,

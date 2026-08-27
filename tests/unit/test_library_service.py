@@ -1,5 +1,5 @@
 from researchops_mcp.repositories.sqlite import SQLiteRepository
-from researchops_mcp.services.library import ConflictError, ResearchLibraryService, ValidationError
+from researchops_mcp.services.library import ConflictError, NotFoundError, ResearchLibraryService, ValidationError
 
 
 class FakePaperService:
@@ -58,3 +58,60 @@ def test_add_note_requires_paper_to_be_in_list(tmp_path) -> None:
         assert "already be present" in str(exc)
     else:
         raise AssertionError("Expected ValidationError when note paper is missing from the list")
+
+
+def test_user_cannot_read_another_users_list(tmp_path) -> None:
+    repository = SQLiteRepository(str(tmp_path / "researchops.db"))
+    service = ResearchLibraryService(repository, FakePaperService())
+
+    alice_list = service.create_reading_list(
+        name="Alice List",
+        description="Private",
+        idempotency_key="alice-list-1",
+        user_id="alice",
+    )
+
+    try:
+        service.get_reading_list(alice_list["list_id"], user_id="bob")
+    except NotFoundError as exc:
+        assert alice_list["list_id"] in str(exc)
+    else:
+        raise AssertionError("Expected NotFoundError for cross-user reading list access")
+
+
+def test_user_cannot_update_another_users_note(tmp_path) -> None:
+    repository = SQLiteRepository(str(tmp_path / "researchops.db"))
+    service = ResearchLibraryService(repository, FakePaperService())
+
+    alice_list = service.create_reading_list(
+        name="Alice List",
+        description="Private",
+        idempotency_key="alice-list-1",
+        user_id="alice",
+    )
+    service.add_paper_to_list(
+        list_id=alice_list["list_id"],
+        paper_id="W1234567890",
+        idempotency_key="alice-paper-1",
+        user_id="alice",
+    )
+    note = service.add_note(
+        list_id=alice_list["list_id"],
+        paper_id="W1234567890",
+        content="Alice note",
+        idempotency_key="alice-note-1",
+        user_id="alice",
+    )
+
+    try:
+        service.update_note(
+            note_id=note["note_id"],
+            content="Bob tries update",
+            expected_version=1,
+            idempotency_key="bob-update-1",
+            user_id="bob",
+        )
+    except NotFoundError as exc:
+        assert note["note_id"] in str(exc)
+    else:
+        raise AssertionError("Expected NotFoundError for cross-user note update")

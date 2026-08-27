@@ -2,10 +2,10 @@
 
 ## Current Position
 
-- Current module: Module 3 - Client and Remote Transport
-- Current day: Day 7 - Streamable HTTP and deployment
-- Current task: Add Streamable HTTP transport and prepare the server for remote staging deployment
-- Next milestone: Add remote Streamable HTTP support, container readiness, and remote Inspector verification
+- Current module: Module 4 - Authentication, Security, and Reliability
+- Current day: Day 8 - Authentication and authorization
+- Current task: Day 8 complete; documentation and verification recorded
+- Next milestone: Begin Day 9 MCP security hardening
 - Active blockers: None
 
 ## Roadmap Progress
@@ -18,8 +18,8 @@
 | 4 | Context and Persistence | Resources and prompts | Completed | Discoverable paper and reading-list resources plus reusable prompts | `pytest` passed with 10 tests; MCP Inspector verified Day 4 resources and prompts interactively; in-process MCP client listed resource templates and prompts, read `reading-list://starter-mcp`, and rendered `compare_papers`; learner explained tool vs resource vs prompt boundaries and why context-size limits matter | 4 |
 | 5 | Context and Persistence | Storage and write operations | Completed | Persistent SQLite-backed MCP application with write safety | `pytest` passed with 14 tests; Inspector verified `create_reading_list`, `add_paper_to_list`, `add_note`, `update_note`, and `delete_note`; learner explained repository/service split, idempotency, optimistic concurrency, and stable interface shape | 4 |
 | 6 | Client and Remote Transport | Build an MCP client | Completed | Python CLI client for ResearchOps MCP | `pytest` passed with 18 tests; CLI verified discovery, tool listing, resource reads, tool-error handling, denied write approval, and approved write execution on 2026-08-25; learner explained why discovery stays separate from the initialized request flow | 5 |
-| 7 | Client and Remote Transport | Streamable HTTP and deployment | In Progress | Remotely accessible staging MCP server | `pytest` passed with 23 tests; stdio still works; HTTP server verified at `http://127.0.0.1:8765/mcp`; Dockerfile added; full external staging deployment still pending | 3 |
-| 8 | Security and Reliability | Authentication and authorization | Not Started | Authenticated multi-user remote server | — | — |
+| 7 | Client and Remote Transport | Streamable HTTP and deployment | Completed | Remotely accessible staging MCP server | `pytest` passed with 24 tests; stdio and local HTTP both verified; Render deployment at `https://researchops-mcp.onrender.com/mcp` passed remote `discover`, `list-tools`, `health_check`, and `search_papers` on 2026-08-25; Inspector and CLI both validated the Streamable HTTP MCP surface | 5 |
+| 8 | Security and Reliability | Authentication and authorization | Completed | Authenticated multi-user remote server | `pytest` passed with 32 tests; dedicated Day 8 HTTP auth tests verified `401` for missing and invalid tokens and `403` for insufficient scope; manual local HTTP checks verified Bob cannot write notes with a read-only token and cannot read Alice's list | 4 |
 | 9 | Security and Reliability | MCP security | Not Started | Security checklist, threat model, adversarial tests | — | — |
 | 10 | Security and Reliability | Reliability engineering | Not Started | Predictable behavior during dependency failures | — | — |
 | 11 | Testing and Production | Protocol and application testing | Not Started | Automated tests and MCP Inspector report | — | — |
@@ -128,4 +128,40 @@
 - Tests executed: `pytest`; `python src/server.py --help`; generated `render.yaml` reviewed for free Docker web-service settings
 - Results: 24 tests passed; server now reads Render-style environment variables; the container and server startup are ready for a free Render web service using temporary SQLite at `/tmp/researchops.db`
 - Topics to revisit: Real non-local Render URL verification and supported AI host connection still remain before Day 7 can be marked complete
+
+### 2026-08-25 Day 7 Closeout
+
+- Topics studied: Remote Streamable HTTP verification, free-host cold starts, Render staging behavior, and ephemeral deployment storage boundaries
+- Work implemented: Completed Day 7 deployment verification against the public Render endpoint at `https://researchops-mcp.onrender.com/mcp`
+- Tests executed: `pytest`; `python client/cli.py --connection-mode http --server-url https://researchops-mcp.onrender.com/mcp discover`; `python client/cli.py --connection-mode http --server-url https://researchops-mcp.onrender.com/mcp list-tools`; `python client/cli.py --connection-mode http --server-url https://researchops-mcp.onrender.com/mcp call-tool health_check`; `python client/cli.py --connection-mode http --server-url https://researchops-mcp.onrender.com/mcp call-tool search_papers --arg "query=Model Context Protocol" --arg "limit=2"`
+- Results: Remote discovery returned server `researchops-mcp`, version `0.5.0`, and protocol `2026-07-28`; remote tool listing exposed the expected 9 tools with schemas and read/write boundaries
+- Results: Remote `health_check` confirmed OpenAlex plus SQLite with staging database path `/tmp/researchops.db`; remote `search_papers` returned live OpenAlex results through the deployed MCP server
+- Problems encountered: Early retries intermittently returned `Not Found` before later succeeding, consistent with free Render cold-start or routing wake-up behavior rather than a persistent MCP routing defect
+- Decisions made: Accept temporary `/tmp/researchops.db` storage for Day 7 staging only and carry persistent remote storage as a later production concern
+- Topics to revisit: Supported AI host connection and persistent remote database strategy after authentication work begins
+- Next action: Start Day 8 by adding authentication and authorization boundaries for remote access
+### 2026-08-27 Day 8 Kickoff
+
+- Topics studied: Authentication versus authorization, OAuth 2.1 roles, protected resource metadata, scopes, token audience, and tenant ownership boundaries
+- Work implemented: Reviewed the roadmap, current tracker state, current learning notes, and current code paths for user ownership and remote transport
+- Tests executed: None yet for Day 8
+- Results: Confirmed the repository already stores `user_id`, but the service still uses one default local user and the remote server does not yet enforce real authentication, scopes, or `401` and `403` responses
+- Problems encountered: None
+- Decisions made: Start Day 8 from the existing single-user ownership hooks rather than redesigning persistence from scratch
+- Topics to revisit: Exact SDK support for auth middleware, protected resource metadata exposure, and how strict the first local auth simulation should be
+- Next action: Teach Day 8 concepts, validate understanding, then implement the first authenticated request path
+
+
+### 2026-08-27 Day 8 Closeout
+
+- Topics studied: Authentication versus authorization, OAuth 2.1 roles, PKCE, protected resource metadata, resource indicators, scopes, and tenant ownership enforcement
+- Work implemented: Added Day 8 auth helpers, demo bearer-token verification, per-scope enforcement, HTTP auth configuration, and user-aware list and note ownership checks through the service and repository layers
+- Work implemented: Extended the CLI to send bearer tokens for HTTP transport and added dedicated Day 8 auth tests for `401` and `403` behavior
+- Tests executed: `pytest tests/unit/test_day8_auth.py`; `pytest`; local HTTP CLI checks with `researchops-bob-read`, `researchops-alice-read`, `researchops-alice-full`, and no token
+- Results: 32 tests passed; missing or invalid bearer tokens return `401`; insufficient write scope returns `403`; cross-user list access is blocked; authenticated owners can still read and write their own data
+- Results: Learner can explain authentication versus authorization, `401` versus `403`, and why scope alone is not enough without ownership checks
+- Problems encountered: The CLI currently summarizes some raw HTTP auth failures as generic transport errors instead of always surfacing the exact HTTP status cleanly
+- Decisions made: Use the official MCP SDK auth surface with demo tokens now, and keep ownership enforcement in the repository layer rather than only at the MCP boundary
+- Topics to revisit: Full external OAuth provider integration, token refresh, and cleaner client-side surfacing of remote auth failures
+- Next action: Begin Day 9 security hardening with outbound controls, validation limits, audit review, and adversarial testing
 

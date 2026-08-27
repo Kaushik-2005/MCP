@@ -25,7 +25,7 @@ class RepositoryConflictError(RepositoryError):
 
 
 class SQLiteRepository:
-    """Small SQLite repository for durable Day 5 state."""
+    """Small SQLite repository for durable state."""
 
     def __init__(self, db_path: str) -> None:
         self._db_path = Path(db_path)
@@ -120,10 +120,13 @@ class SQLiteRepository:
                 );
                 """
             )
-            conn.execute(
-                "INSERT OR IGNORE INTO users (user_id, display_name) VALUES (?, ?)",
-                (DEFAULT_USER_ID, "Local Learner"),
-            )
+            self.ensure_user(conn, user_id=DEFAULT_USER_ID, display_name="Local Learner")
+
+    def ensure_user(self, conn: sqlite3.Connection, *, user_id: str, display_name: str) -> None:
+        conn.execute(
+            "INSERT OR IGNORE INTO users (user_id, display_name) VALUES (?, ?)",
+            (user_id, display_name),
+        )
 
     def get_idempotency_result(self, conn: sqlite3.Connection, operation: str, idempotency_key: str) -> dict[str, Any] | None:
         row = conn.execute(
@@ -203,7 +206,17 @@ class SQLiteRepository:
             ),
         )
 
-    def add_paper_to_list(self, conn: sqlite3.Connection, *, list_id: str, paper_id: str, added_at: str) -> bool:
+    def add_paper_to_list(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        list_id: str,
+        paper_id: str,
+        user_id: str,
+        added_at: str,
+    ) -> bool:
+        if not self.has_reading_list(conn, list_id, user_id=user_id):
+            raise RepositoryNotFoundError(f"Reading list '{list_id}' was not found.")
         cursor = conn.execute(
             """
             INSERT OR IGNORE INTO reading_list_papers (list_id, paper_id, added_at)
@@ -211,16 +224,16 @@ class SQLiteRepository:
             """,
             (list_id, paper_id, added_at),
         )
-        if not self.has_reading_list(conn, list_id):
-            raise RepositoryNotFoundError(f"Reading list '{list_id}' was not found.")
         if cursor.rowcount:
             conn.execute(
-                "UPDATE reading_lists SET updated_at = ? WHERE list_id = ?",
-                (added_at, list_id),
+                "UPDATE reading_lists SET updated_at = ? WHERE list_id = ? AND user_id = ?",
+                (added_at, list_id, user_id),
             )
         return bool(cursor.rowcount)
 
-    def reading_list_contains_paper(self, conn: sqlite3.Connection, *, list_id: str, paper_id: str) -> bool:
+    def reading_list_contains_paper(self, conn: sqlite3.Connection, *, list_id: str, paper_id: str, user_id: str) -> bool:
+        if not self.has_reading_list(conn, list_id, user_id=user_id):
+            return False
         row = conn.execute(
             "SELECT 1 FROM reading_list_papers WHERE list_id = ? AND paper_id = ?",
             (list_id, paper_id),
@@ -246,8 +259,8 @@ class SQLiteRepository:
             (note_id, user_id, list_id, paper_id, content, created_at, created_at),
         )
         conn.execute(
-            "UPDATE reading_lists SET updated_at = ? WHERE list_id = ?",
-            (created_at, list_id),
+            "UPDATE reading_lists SET updated_at = ? WHERE list_id = ? AND user_id = ?",
+            (created_at, list_id, user_id),
         )
         return {
             "note_id": note_id,
@@ -291,8 +304,8 @@ class SQLiteRepository:
         ).fetchone()
         assert row is not None
         conn.execute(
-            "UPDATE reading_lists SET updated_at = ? WHERE list_id = ?",
-            (updated_at, row["list_id"]),
+            "UPDATE reading_lists SET updated_at = ? WHERE list_id = ? AND user_id = ?",
+            (updated_at, row["list_id"], user_id),
         )
         return {
             "note_id": note_id,
@@ -334,8 +347,8 @@ class SQLiteRepository:
         ).fetchone()
         assert row is not None
         conn.execute(
-            "UPDATE reading_lists SET updated_at = ? WHERE list_id = ?",
-            (deleted_at, row["list_id"]),
+            "UPDATE reading_lists SET updated_at = ? WHERE list_id = ? AND user_id = ?",
+            (deleted_at, row["list_id"], user_id),
         )
         return {
             "note_id": note_id,

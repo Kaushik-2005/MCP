@@ -4,7 +4,7 @@ ResearchOps MCP is a learning project for building a production-style Model Cont
 
 ## Current Status
 
-The project is in Day 7 of the roadmap. The server now supports both local `stdio` and Streamable HTTP transport, includes a Docker-based deployment path, and the Python MCP client can talk to the same server over either transport.
+The project is in Day 8 of the roadmap. The server now supports both local `stdio` and Streamable HTTP transport, includes a Docker-based deployment path, and now has authenticated multi-user HTTP access with scoped authorization and ownership checks for reading lists and notes.
 
 ## Planned Capabilities
 
@@ -89,6 +89,41 @@ python client/cli.py --connection-mode http --server-url http://127.0.0.1:8765/m
 python client/cli.py --connection-mode http --server-url http://127.0.0.1:8765/mcp list-tools
 ```
 
+## Day 8 Auth Testing
+
+Run the local HTTP server with auth enabled:
+
+```powershell
+python src/server.py --transport streamable-http --host 127.0.0.1 --port 8012 --stateless-http --auth-enabled --resource-server-url http://127.0.0.1:8012/mcp
+```
+
+Demo bearer tokens available for learning:
+
+- `researchops-alice-full`
+- `researchops-alice-read`
+- `researchops-bob-full`
+- `researchops-bob-read`
+
+Example authenticated client commands:
+
+```powershell
+python client/cli.py --connection-mode http --server-url http://127.0.0.1:8012/mcp --bearer-token researchops-bob-read discover
+python client/cli.py --connection-mode http --server-url http://127.0.0.1:8012/mcp --bearer-token researchops-bob-read call-tool search_papers --arg "query=Model Context Protocol" --arg "limit=2"
+python client/cli.py --connection-mode http --server-url http://127.0.0.1:8012/mcp --bearer-token researchops-alice-full --yes call-tool create_reading_list --arg "name=Alice Private List" --arg "idempotency_key=alice-list-1"
+```
+
+Example failure checks:
+
+```powershell
+python client/cli.py --connection-mode http --server-url http://127.0.0.1:8012/mcp list-tools
+python client/cli.py --connection-mode http --server-url http://127.0.0.1:8012/mcp --bearer-token researchops-bob-read --yes call-tool add_note --arg "list_id=starter-mcp" --arg "paper_id=W7129030749" --arg "content=Test" --arg "idempotency_key=day8-scope-1"
+```
+
+Expected behavior:
+- no token on HTTP: rejected
+- read-only token calling a note write: rejected
+
+
 ## Docker
 
 Build the container image:
@@ -148,9 +183,13 @@ python client/cli.py --connection-mode http --server-url https://<your-service-n
 python client/cli.py --connection-mode http --server-url https://<your-service-name>.onrender.com/mcp list-tools
 ```
 
-### What Still Remains To Fully Finish Day 7
+### Day 7 Follow-Up Notes
 
-- Deploy the real Render staging instance
-- Verify the non-local Render MCP URL
-- Test the remote URL with MCP Inspector
-- Connect that URL to a supported AI host
+- The Render staging instance is deployed at `https://researchops-mcp.onrender.com/mcp`
+- Day 8 remote auth can be enabled later by supplying the auth-related environment variables on Render
+- Persistent remote storage and full production OAuth remain later roadmap concerns
+
+
+
+
+

@@ -5,13 +5,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import time
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamable_http_client
+from mcp.shared.exceptions import MCPError
 
 WRITE_TOOLS = {
     "create_reading_list",
@@ -30,6 +33,7 @@ class ClientConfig:
     server_cwd: str | None
     server_url: str
     auto_approve: bool
+    bearer_token: str | None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -52,6 +56,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--server-url",
         default="http://127.0.0.1:8000/mcp",
         help="Base URL for the Streamable HTTP MCP server.",
+    )
+    parser.add_argument(
+        "--bearer-token",
+        default=os.getenv("RESEARCHOPS_BEARER_TOKEN"),
+        help="Optional bearer token for authenticated HTTP MCP servers.",
     )
     parser.add_argument("--yes", action="store_true", help="Auto-approve write tools.")
 
@@ -121,6 +130,7 @@ def build_config(args: argparse.Namespace) -> ClientConfig:
         server_cwd=args.server_cwd,
         server_url=args.server_url,
         auto_approve=args.yes,
+        bearer_token=args.bearer_token,
     )
 
 
@@ -142,12 +152,16 @@ async def run_stdio_cli(args: argparse.Namespace, config: ClientConfig) -> int:
 
 
 async def run_http_cli(args: argparse.Namespace, config: ClientConfig) -> int:
-    async with streamable_http_client(config.server_url) as parts:
-        read, write = parts[0], parts[1]
-        async with ClientSession(read, write) as session:
-            if args.command == "discover":
-                return await run_discover(session)
-            return await dispatch_initialized_command(session, args, auto_approve=config.auto_approve)
+    headers: dict[str, str] | None = None
+    if config.bearer_token:
+        headers = {"Authorization": f"Bearer {config.bearer_token}"}
+    async with httpx.AsyncClient(headers=headers, timeout=30.0) as http_client:
+        async with streamable_http_client(config.server_url, http_client=http_client) as parts:
+            read, write = parts[0], parts[1]
+            async with ClientSession(read, write) as session:
+                if args.command == "discover":
+                    return await run_discover(session)
+                return await dispatch_initialized_command(session, args, auto_approve=config.auto_approve)
 
 
 async def dispatch_initialized_command(session: ClientSession, args: argparse.Namespace, *, auto_approve: bool) -> int:
@@ -322,6 +336,22 @@ def print_json(payload: Any) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True))
 
 
+def summarize_exception(exc: BaseException) -> str:
+    if isinstance(exc, BaseExceptionGroup):
+        messages: list[str] = []
+        stack: list[BaseException] = [exc]
+        while stack:
+            current = stack.pop()
+            if isinstance(current, BaseExceptionGroup):
+                stack.extend(reversed(list(current.exceptions)))
+                continue
+            message = str(current).strip() or current.__class__.__name__
+            if message not in messages:
+                messages.append(message)
+        return "; ".join(messages) if messages else exc.__class__.__name__
+    return str(exc).strip() or exc.__class__.__name__
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -329,8 +359,15 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(run_cli(args))
     except ValueError as exc:
         parser.error(str(exc))
+    except MCPError as exc:
+        print_json({"status": "error", "error_type": "mcp", "message": str(exc)})
+        return 1
+    except BaseExceptionGroup as exc:
+        print_json({"status": "error", "error_type": "transport", "message": summarize_exception(exc)})
+        return 1
     return 2
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

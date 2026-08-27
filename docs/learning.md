@@ -922,6 +922,163 @@ Day 7 adds Streamable HTTP transport to the same MCP server without changing the
 
 ### Day 8: Authentication and Authorization
 
+#### Learning objectives
+
+- Distinguish authentication from authorization in an MCP server.
+- Understand the OAuth 2.1 roles relevant to remote MCP.
+- Understand why PKCE matters for public clients such as desktop and CLI hosts.
+- Understand protected resource metadata, authorization-server discovery, and resource indicators.
+- Understand why scopes are not enough without per-resource ownership checks.
+- Understand when local `stdio` can use environment credentials instead of an HTTP OAuth flow.
+
+#### Core concepts
+
+- Authentication answers who the caller is.
+- Authorization answers what the caller is allowed to do.
+- For remote HTTP MCP servers, auth should follow the MCP authorization guidance instead of inventing a one-off header scheme.
+- OAuth 2.1 roles map cleanly to MCP:
+  - resource owner: the end user
+  - client: the MCP-speaking host or app
+  - authorization server: the system that issues tokens
+  - resource server: the MCP server that validates tokens and enforces access
+- PKCE protects public clients by binding the authorization code exchange to the client that started it.
+- Protected resource metadata tells a client where auth-related metadata lives and how to authenticate to the MCP server.
+- Resource indicators and token audience validation stop a token minted for one resource server from being replayed against another.
+- Scopes express coarse permissions such as `papers:read` or `notes:write`, but tenant ownership must still be checked at the database layer.
+- `401 Unauthorized` means the caller is missing valid authentication.
+- `403 Forbidden` means the caller is authenticated but lacks the required permission.
+
+#### How it works
+
+1. A remote MCP client sends a bearer token in the `Authorization` header.
+2. The MCP server validates the token and extracts identity and scopes.
+3. The server checks whether the requested MCP action needs a scope such as `papers:read` or `lists:write`.
+4. If there is no valid token, the HTTP layer returns `401`.
+5. If the token is valid but the scope is insufficient, the server returns `403`.
+6. If the scope is present, the handler still checks tenant ownership using `user_id` at the repository layer.
+7. A cross-user request is denied by the application boundary even if the caller has the general read scope.
+
+In ResearchOps Day 8, the first auth implementation uses demo bearer tokens so we can learn the protocol shape without having to build a full external authorization server yet.
+
+#### Example
+
+Example request flow:
+
+- Alice sends a bearer token with `lists:write` and creates a reading list.
+- Bob has `lists:read` but tries to read Alice's list.
+- Bob is authenticated, but he is not authorized for Alice's resource.
+- The repository ownership check prevents access, and the list is not exposed to Bob.
+
+Scope example:
+
+- `researchops-bob-read` includes `papers:read` and `lists:read`.
+- It can search papers and read Bob-owned lists.
+- It cannot call `add_note` because that requires `notes:write`.
+
+#### Role in our project
+
+- Day 8 turns the remote Streamable HTTP server into an authenticated multi-user server instead of a single-user staging demo.
+- The project now distinguishes local learning mode from remote protected mode.
+- The write tools use identity from the access token instead of always writing as one default local user.
+- Reading-list and note access now depend on both scope and ownership.
+
+#### Why it is designed this way
+
+- Using the official SDK auth surface keeps the project close to how real MCP servers should behave.
+- Demo tokens let us learn the contract shape before integrating a real OAuth provider.
+- Scope checks near the MCP boundary are useful for fast rejection.
+- Ownership checks in the repository are still required because scope alone does not identify which tenant data is allowed.
+- Local `stdio` remains simpler because it is not an HTTP protected resource and can rely on local environment trust for this learning phase.
+
+#### Alternatives and trade-offs
+
+- No auth until later:
+  - Simpler temporarily.
+  - Wrong for a multi-user remote server.
+- Custom ad hoc API key auth:
+  - Easy to prototype.
+  - Teaches the wrong protocol shape compared with MCP's OAuth-oriented guidance.
+- Full real OAuth provider now:
+  - More realistic.
+  - Much heavier than needed for the first auth learning milestone.
+
+#### Failure modes
+
+- A server validates a token but never checks resource ownership, allowing cross-user access.
+- A token minted for a different resource server is accepted because audience or resource binding is ignored.
+- Missing auth and insufficient scope are both collapsed into one vague failure, making debugging and policy harder.
+- A local single-user assumption leaks into remote handlers, so every write is attributed to the same user.
+- The client treats every auth failure as a generic transport problem and hides useful HTTP status detail.
+
+#### Common mistakes
+
+- Saying authentication and authorization are the same thing.
+- Assuming a read scope means a caller can read any tenant's data.
+- Putting ownership checks only in the client or prompt instead of the server.
+- Treating host approval as a replacement for server authorization.
+- Forgetting that public clients need PKCE because they cannot safely hold a client secret.
+
+#### Security considerations
+
+- Least privilege matters: scopes should be narrow and purpose-specific.
+- Token subject, issuer, and resource binding should be validated before trusting the token.
+- Tool arguments and resource identifiers remain untrusted even after authentication.
+- Ownership should be enforced where the data is fetched or mutated, not only at the route layer.
+- Protected resource metadata and `WWW-Authenticate` headers help clients recover safely from auth failures.
+- Local `stdio` credentials should stay out of committed code and be supplied through the environment when needed.
+
+#### Interview explanation
+
+Authentication proves who the caller is, while authorization decides what that caller can do. In a remote MCP server, bearer-token authentication belongs at the HTTP transport boundary, but authorization must continue inside the application using scopes and resource ownership checks. A correct implementation returns `401` for missing or invalid auth, `403` for insufficient scope, and still prevents cross-tenant access even when the caller has a broad read scope.
+
+#### Questions for revision
+
+1. What is the difference between authentication and authorization?
+   Answer: Authentication identifies the caller. Authorization decides whether that caller is allowed to perform the specific action on the specific resource.
+
+2. Why is PKCE important for an MCP CLI or desktop client?
+   Answer: Because those are public clients that cannot safely keep a client secret. PKCE protects the authorization-code flow from interception and code replay.
+
+3. What is protected resource metadata in MCP terms?
+   Answer: It is metadata published by the MCP resource server that helps clients discover how to authenticate and where related authorization metadata lives.
+
+4. Why are resource indicators or token audience checks important?
+   Answer: They bind the token to the intended resource server so a token issued for one server cannot be replayed against another.
+
+5. Why is `lists:read` alone not enough for Alice to read Bob's list?
+   Answer: Because scope is only coarse permission. The server must still verify ownership or tenant authorization for that specific list.
+
+6. When should local `stdio` avoid the full HTTP OAuth flow?
+   Answer: In local subprocess development, credentials usually come from the environment or local trust configuration rather than a remote HTTP authorization flow.
+
+#### Active recall review
+
+1. Question: What status code should a server return when there is no valid bearer token at all?
+   Answer: `401 Unauthorized`.
+
+2. Question: What status code should a server return when the caller is authenticated but lacks `notes:write`?
+   Answer: `403 Forbidden`.
+
+3. Question: Why is identity plus scope still not enough to authorize `reading-list://{list_id}` access?
+   Answer: Because the server must also check whether that specific list belongs to the authenticated user or tenant.
+
+4. Question: In ResearchOps Day 8, what changed in the write path compared with Day 7?
+   Answer: The server stopped writing everything as one implicit local user. It now derives `user_id` from the authenticated request identity and enforces ownership through the repository and service layers.
+
+5. Question: Why did we use demo bearer tokens instead of integrating a full external authorization server immediately?
+   Answer: To learn the MCP auth contract shape, scope handling, status codes, and tenant boundaries first without getting blocked by full OAuth provider setup.
+
+#### References
+
+- MCP specification latest: https://modelcontextprotocol.io/specification/latest
+- MCP authorization guidance: https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization
+- MCP 2026-07-28 release overview: https://blog.modelcontextprotocol.io/posts/2026-07-28/
+- MCP Python SDK auth middleware reference: https://py.sdk.modelcontextprotocol.io/v2/api/mcp/server/auth/middleware/bearer_auth/
+- OAuth 2.1 draft and security guidance: https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1
+- RFC 7636 PKCE: https://datatracker.ietf.org/doc/html/rfc7636
+- RFC 8707 Resource Indicators: https://datatracker.ietf.org/doc/html/rfc8707
+- RFC 9728 Protected Resource Metadata: https://datatracker.ietf.org/doc/html/rfc9728
+
 ### Day 9: MCP Security
 
 ### Day 10: Reliability Engineering
@@ -935,6 +1092,9 @@ Day 7 adds Streamable HTTP transport to the same MCP server without changing the
 ### Day 13: Observability and Scaling
 
 ### Day 14: Advanced Features and Final Release
+
+
+
 
 
 

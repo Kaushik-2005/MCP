@@ -2,7 +2,8 @@
 
 ## Scope
 
-This is the initial Day 1 threat-model outline for the ResearchOps MCP project. It will be expanded during Days 8 to 10 when authentication, security, and reliability are implemented.
+This started as the Day 1 threat-model outline for the ResearchOps MCP project.
+It has now been extended through Day 8 to reflect authenticated remote access, scoped authorization, and tenant ownership enforcement.
 
 ## Assets
 
@@ -41,6 +42,8 @@ This is the initial Day 1 threat-model outline for the ResearchOps MCP project. 
 
 - A caller may attempt to read another user's lists or notes.
 - A caller may attempt writes without approval or correct scope.
+- A caller may present a valid token for the wrong resource server.
+- A caller may have a broad read scope but still target another tenant's private data.
 
 ### Input abuse
 
@@ -71,6 +74,27 @@ This is the initial Day 1 threat-model outline for the ResearchOps MCP project. 
 - Redact secrets and sensitive fields in logs
 - Add timeouts and safe retry rules
 - Audit every consequential write
+
+## Day 8 Auth State
+
+- Remote HTTP access now requires bearer-token authentication when auth is enabled.
+- The current learning implementation uses deterministic demo tokens for Alice and Bob instead of a full external OAuth provider.
+- Scopes currently enforced:
+  - `papers:read`
+  - `lists:read`
+  - `lists:write`
+  - `notes:write`
+- Ownership is enforced at the repository query level so a caller cannot read or mutate another user's lists or notes just by having a coarse scope.
+- Verified Day 8 behaviors:
+  - missing or invalid bearer token returns `401 Unauthorized`
+  - insufficient scope returns `403 Forbidden`
+  - cross-user reading-list access is denied
+
+## Remaining Day 9+ Security Gaps
+
+- The demo token verifier is not a production identity system.
+- The CLI still collapses some raw HTTP auth failures into a generic transport error.
+- Outbound allowlists, request-size limits, log redaction, and adversarial prompt-injection tests are not implemented yet.
 
 ## Open Questions
 
