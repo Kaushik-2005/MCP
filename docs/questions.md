@@ -19,3 +19,23 @@
 - Correct explanation: `lists:read` is a coarse permission that allows list-reading operations in general, but authorization must still verify that the specific `list_id` belongs to the authenticated user or tenant. Bob is authenticated and has a read scope, but he is not authorized for Alice's list because ownership fails.
 - Revisit on: Day 10
 - Status: Understood
+
+## Question
+
+- Date: 2026-08-29
+- Related day: Day 9
+- Question: Why is rate limiting a security control even when a caller is already authenticated?
+- Current understanding: It helps with load balancing when handling multiple users and multiple requests.
+- Correct explanation: Authentication answers who the caller is. Rate limiting controls how much and how often that caller can use the server. It helps prevent abuse, brute-force probing, upstream exhaustion, and denial-of-service pressure, even when the caller has a valid token.
+- Revisit on: Day 11
+- Status: Understood
+
+## Question
+
+- Date: 2026-08-29
+- Related day: Day 9
+- Question: Why do we preserve hostile prompt text in `compare_papers` instead of stripping it out entirely?
+- Current understanding: It can be used to manipulate the model, so it is treated as untrusted.
+- Correct explanation: The text is still relevant input data and may explain the caller's requested comparison focus. ResearchOps preserves it as data but wraps the prompt with an explicit security warning so the model treats it as untrusted evidence rather than instructions to obey.
+- Revisit on: Day 11
+- Status: Understood

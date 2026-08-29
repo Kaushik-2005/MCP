@@ -10,6 +10,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from researchops_mcp.security import DEFAULT_ALLOWED_OUTBOUND_DOMAINS, MAX_QUERY_CHARS, ensure_outbound_url_allowed
+
 BASE_URL = "https://api.openalex.org"
 DEFAULT_MAILTO = "learning-project@example.com"
 DEFAULT_TIMEOUT_SECONDS = 10
@@ -56,9 +58,16 @@ class SearchResponse:
 class OpenAlexClient:
     """Small OpenAlex client for the read-only ResearchOps server."""
 
-    def __init__(self, *, mailto: str = DEFAULT_MAILTO, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS) -> None:
+    def __init__(
+        self,
+        *,
+        mailto: str = DEFAULT_MAILTO,
+        timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+        allowed_domains: tuple[str, ...] = DEFAULT_ALLOWED_OUTBOUND_DOMAINS,
+    ) -> None:
         self._mailto = mailto
         self._timeout_seconds = timeout_seconds
+        self._allowed_domains = allowed_domains
 
     def search_works(self, *, query: str, page: int, per_page: int, search_mode: OpenAlexSearchMode) -> SearchResponse:
         if search_mode == "title":
@@ -125,8 +134,10 @@ class OpenAlexClient:
         )
 
     def _get_json(self, path: str) -> dict[str, Any]:
+        url = f"{BASE_URL}{path}"
+        ensure_outbound_url_allowed(url, allowed_domains=self._allowed_domains)
         request = Request(
-            url=f"{BASE_URL}{path}",
+            url=url,
             headers={
                 "Accept": "application/json",
                 "User-Agent": f"researchops-mcp/0.2.0 ({self._mailto})",
@@ -157,6 +168,8 @@ class PaperService:
         normalized_query = query.strip()
         if not normalized_query:
             raise ValidationError("Query must not be empty.")
+        if len(normalized_query) > MAX_QUERY_CHARS:
+            raise ValidationError(f"Query must be at most {MAX_QUERY_CHARS} characters.")
         if page < 1:
             raise ValidationError("Page must be greater than or equal to 1.")
         if limit < 1 or limit > MAX_RESULTS_PER_PAGE:
@@ -177,6 +190,7 @@ class PaperService:
             "search_mode": search_mode,
             "resolved_search_mode": result.resolved_search_mode,
             "results": result.results,
+            "content_trust": "untrusted_external_data",
         }
 
     def get_paper(self, paper_id: str) -> dict[str, Any]:
@@ -280,4 +294,3 @@ def slugify_author(authors: str) -> str:
 
 def sanitize_bibtex_value(value: str) -> str:
     return value.replace("{", "").replace("}", "")
-

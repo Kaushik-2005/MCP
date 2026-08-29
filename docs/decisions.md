@@ -65,6 +65,7 @@
 - Why: It preserves the roadmap's separation between MCP interface design and persistence design, allowing us to learn the correct resource boundary before adding database complexity.
 - Trade-offs: The Day 4 reading-list data is not durable and is intentionally limited.
 - Consequences: Day 5 can replace the backing implementation without changing the externally learned MCP resource shape.
+
 ## Decision: Use SQLite and a Repository Layer for Day 5 Local Persistence
 
 - Date: 2026-08-21
@@ -107,7 +108,6 @@
 - Trade-offs: The startup code becomes slightly more configurable, and client transport behavior must explicitly account for stdio versus HTTP lifecycle differences.
 - Consequences: ResearchOps can evolve transport and deployment shape without redesigning tools, resources, and prompts every time the serving path changes.
 
-
 ## Decision: Use Free Render Staging With Temporary SQLite Storage For Day 7
 
 - Date: 2026-08-25
@@ -135,3 +135,17 @@
 - Why: This teaches the correct MCP authorization shape, keeps the server aligned with the spec and SDK, and lets us verify `401`, `403`, scope checks, and tenant ownership without needing a full live authorization server yet.
 - Trade-offs: The demo verifier is not a production identity system and does not replace a real OAuth authorization code flow, token refresh flow, or external issuer integration.
 - Consequences: The project now has the right transport and handler boundaries for auth, and a later production phase can swap the verifier for a real issuer-backed implementation without redesigning the MCP capability surface.
+
+## Decision: Add Lightweight In-Process Security Controls Before External Gateways
+
+- Date: 2026-08-29
+- Status: Accepted
+- Context: Day 9 required practical MCP security hardening for the existing authenticated ResearchOps server, but introducing infrastructure such as Redis-backed rate limiting, an API gateway, or a WAF would add deployment and operational complexity ahead of the roadmap.
+- Options considered:
+  - Delay most security controls until a later production-infrastructure phase
+  - Add only proxy-level protections outside the application
+  - Implement lightweight in-process controls now and leave distributed controls for later
+- Decision: Add request-size limits, fixed-window in-memory rate limiting, outbound-domain allowlisting, trust warnings, and redaction helpers directly in the Python application for Day 9.
+- Why: This places the most important security boundaries where the roadmap can teach them clearly, keeps the implementation observable and testable, and improves the current local and staging server immediately without requiring new infrastructure.
+- Trade-offs: The current limiter is single-process only, the allowlist is intentionally simple, and some protections will need to move or be duplicated at proxy or platform level in a later production deployment.
+- Consequences: The Day 9 server now has meaningful abuse resistance and safer model-facing context handling, while Day 13 or later can upgrade these controls to shared infrastructure without redesigning the MCP surface.

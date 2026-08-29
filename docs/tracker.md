@@ -3,9 +3,9 @@
 ## Current Position
 
 - Current module: Module 4 - Authentication, Security, and Reliability
-- Current day: Day 8 - Authentication and authorization
-- Current task: Day 8 complete; documentation and verification recorded
-- Next milestone: Begin Day 9 MCP security hardening
+- Current day: Day 9 - MCP security
+- Current task: Day 9 formally completed and documented
+- Next milestone: Begin Day 10 reliability engineering
 - Active blockers: None
 
 ## Roadmap Progress
@@ -20,7 +20,7 @@
 | 6 | Client and Remote Transport | Build an MCP client | Completed | Python CLI client for ResearchOps MCP | `pytest` passed with 18 tests; CLI verified discovery, tool listing, resource reads, tool-error handling, denied write approval, and approved write execution on 2026-08-25; learner explained why discovery stays separate from the initialized request flow | 5 |
 | 7 | Client and Remote Transport | Streamable HTTP and deployment | Completed | Remotely accessible staging MCP server | `pytest` passed with 24 tests; stdio and local HTTP both verified; Render deployment at `https://researchops-mcp.onrender.com/mcp` passed remote `discover`, `list-tools`, `health_check`, and `search_papers` on 2026-08-25; Inspector and CLI both validated the Streamable HTTP MCP surface | 5 |
 | 8 | Security and Reliability | Authentication and authorization | Completed | Authenticated multi-user remote server | `pytest` passed with 32 tests; dedicated Day 8 HTTP auth tests verified `401` for missing and invalid tokens and `403` for insufficient scope; manual local HTTP checks verified Bob cannot write notes with a read-only token and cannot read Alice's list | 4 |
-| 9 | Security and Reliability | MCP security | Not Started | Security checklist, threat model, adversarial tests | — | — |
+| 9 | Security and Reliability | MCP security | Completed | Security checklist, threat model, and adversarial tests | `pytest tests/unit/test_day9_security.py` passed with 8 tests and full `pytest` passed with 40 tests on 2026-08-29; manual HTTP checks verified untrusted-content warnings on `paper://W7129030749`, prompt hardening on `compare_papers`, ownership denial for Bob reading Alice's list, and rate limiting after repeated authenticated requests | 4 |
 | 10 | Security and Reliability | Reliability engineering | Not Started | Predictable behavior during dependency failures | — | — |
 | 11 | Testing and Production | Protocol and application testing | Not Started | Automated tests and MCP Inspector report | — | — |
 | 12 | Testing and Production | Model and tool-selection evaluation | Not Started | Measurable evaluation report | — | — |
@@ -42,8 +42,6 @@
 - Topics to revisit: Exact boundary between tools, resources, prompts, and Tasks once the schema is concrete
 - Next action: Begin Day 2 by scaffolding a local FastMCP server and adding mock tools
 
-
-
 ### 2026-08-19
 
 - Topics studied: MCP Python SDK v2, MCPServer rename from FastMCP, tool registration, stdio transport, structured results, tool-level errors
@@ -54,10 +52,6 @@
 - Decisions made: Use current official SDK v2 naming (MCPServer) while documenting the roadmap's older FastMCP term
 - Topics to revisit: MCP Inspector workflow and how stdio transport is wired in practice
 - Next action: Begin Day 3 by tightening tool design and connecting `search_papers` to a real research API
-
-
-
-
 
 ### 2026-08-20
 
@@ -85,10 +79,6 @@
 - Decisions made: Use SQLite via the Python standard library for local persistence and keep the `reading-list://{list_id}` resource shape stable while changing only the backing implementation
 - Topics to revisit: How to evolve the SQLite local design into the later remote multi-user architecture
 - Next action: Begin Day 6 by building a small Python MCP client for discovery, reads, and tool calls
-
-
-
-
 
 ### 2026-08-23
 
@@ -140,6 +130,7 @@
 - Decisions made: Accept temporary `/tmp/researchops.db` storage for Day 7 staging only and carry persistent remote storage as a later production concern
 - Topics to revisit: Supported AI host connection and persistent remote database strategy after authentication work begins
 - Next action: Start Day 8 by adding authentication and authorization boundaries for remote access
+
 ### 2026-08-27 Day 8 Kickoff
 
 - Topics studied: Authentication versus authorization, OAuth 2.1 roles, protected resource metadata, scopes, token audience, and tenant ownership boundaries
@@ -150,7 +141,6 @@
 - Decisions made: Start Day 8 from the existing single-user ownership hooks rather than redesigning persistence from scratch
 - Topics to revisit: Exact SDK support for auth middleware, protected resource metadata exposure, and how strict the first local auth simulation should be
 - Next action: Teach Day 8 concepts, validate understanding, then implement the first authenticated request path
-
 
 ### 2026-08-27 Day 8 Closeout
 
@@ -165,3 +155,26 @@
 - Topics to revisit: Full external OAuth provider integration, token refresh, and cleaner client-side surfacing of remote auth failures
 - Next action: Begin Day 9 security hardening with outbound controls, validation limits, audit review, and adversarial testing
 
+### 2026-08-29 Day 9 Kickoff
+
+- Topics studied: Day 9 kickoff; prompt injection, tool poisoning, tool shadowing, confused-deputy attacks, SSRF, data exfiltration, validation, rate limiting, and audit boundaries
+- Work implemented: Reviewed the roadmap, tracker, learning notes, current Day 8 auth state, and current codebase before starting security hardening
+- Tests executed: None yet for Day 9
+- Results: Confirmed Day 8 is complete and the earliest incomplete milestone is Day 9 MCP security
+- Problems encountered: None
+- Decisions made: Start Day 9 from the current authenticated multi-user server instead of redesigning transport or auth again
+- Topics to revisit: Which protections belong in transport middleware versus tool handlers versus downstream services
+- Next action: Teach Day 9 security concepts, validate understanding, then implement the first hardening slice
+
+### 2026-08-29 Day 9 Closeout
+
+- Topics studied: prompt injection, tool poisoning, confused deputy, outbound allowlists, request-size limits, rate limiting, logging hygiene, and trust labeling for model-facing content
+- Work implemented: Added `security.py` with outbound-domain checks, request-size middleware, rate limiting middleware, and log redaction helpers; tightened OpenAlex, prompt, resource, and note validation; added untrusted-content warnings to paper and reading-list resources and prompt templates; fixed HTTP startup to mount the ASGI app with custom middleware via `uvicorn`
+- Tests executed: `pytest tests/unit/test_day9_security.py`; `pytest`; manual HTTP CLI checks against `http://127.0.0.1:8012/mcp` for `read-resource paper://W7129030749`, `get-prompt compare_papers`, repeated `discover` calls with a short rate-limit window, and prior Day 8 ownership and scope checks under auth
+- Results: 8 dedicated Day 9 security tests passed and the full suite passed with 40 tests; paper resources now mark external metadata as untrusted, prompt templates add an explicit security note, oversize input is rejected, and non-OpenAlex outbound targets are blocked
+- Results: Manual verification confirmed `paper://W7129030749` includes `content_trust=untrusted_external_data` and a `security_warning`; `compare_papers` preserved the hostile focus string as data while warning not to follow untrusted content as instructions; repeated authenticated requests hit the configured rate limit and were rejected at the HTTP layer
+- Results: Learner can explain why host approval is not enough, how ownership and scope differ, why rate limiting is about abuse control rather than identity, and why paper metadata and notes must be treated as untrusted content
+- Problems encountered: The first Day 9 HTTP startup attempt incorrectly passed custom middleware settings into `MCPServer.run(...)`, which raised `TypeError: MCPServer.run_streamable_http_async() got an unexpected keyword argument 'max_http_body_bytes'`; the server entry point was corrected to create the ASGI app and run it with `uvicorn`
+- Decisions made: Keep Day 9 hardening lightweight and in-process for now instead of introducing Redis, a WAF, or an external API gateway before the roadmap requires them
+- Topics to revisit: Replace in-memory rate limiting with a distributed limiter for multi-instance production deployment and improve CLI surfacing of raw HTTP 429 responses
+- Next action: Begin Day 10 by making dependency failures, retries, and degradation paths predictable

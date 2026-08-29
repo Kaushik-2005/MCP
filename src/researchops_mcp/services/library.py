@@ -13,6 +13,7 @@ from researchops_mcp.repositories.sqlite import (
     SQLiteRepository,
     utc_now,
 )
+from researchops_mcp.security import MAX_DESCRIPTION_CHARS, MAX_LIST_NAME_CHARS, MAX_NOTE_CHARS
 from researchops_mcp.services.openalex import PaperService, normalize_paper_id
 
 IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[a-zA-Z0-9._:-]{4,120}$")
@@ -94,6 +95,10 @@ class ResearchLibraryService:
         normalized_description = description.strip()
         if not normalized_name:
             raise ValidationError("name must not be empty.")
+        if len(normalized_name) > MAX_LIST_NAME_CHARS:
+            raise ValidationError(f"name must be at most {MAX_LIST_NAME_CHARS} characters.")
+        if len(normalized_description) > MAX_DESCRIPTION_CHARS:
+            raise ValidationError(f"description must be at most {MAX_DESCRIPTION_CHARS} characters.")
         self._validate_idempotency_key(idempotency_key)
         operation = "create_reading_list"
         now = utc_now()
@@ -155,6 +160,8 @@ class ResearchLibraryService:
         normalized_content = content.strip()
         if not normalized_content:
             raise ValidationError("content must not be empty.")
+        if len(normalized_content) > MAX_NOTE_CHARS:
+            raise ValidationError(f"content must be at most {MAX_NOTE_CHARS} characters.")
         self._validate_idempotency_key(idempotency_key)
         operation = "add_note"
         now = utc_now()
@@ -180,7 +187,7 @@ class ResearchLibraryService:
                 content=normalized_content,
                 created_at=now,
             )
-            response = {**created, "status": "created"}
+            response = {**created, "status": "created", "content_trust": "untrusted_user_input"}
             self._record_write(conn, operation=operation, target_type="note", target_id=note_id, idempotency_key=idempotency_key, payload=response, created_at=now)
             self._repository.store_idempotency_result(conn, operation=operation, idempotency_key=idempotency_key, response=response, created_at=now)
             return response
@@ -193,6 +200,8 @@ class ResearchLibraryService:
             raise ValidationError("note_id must not be empty.")
         if not normalized_content:
             raise ValidationError("content must not be empty.")
+        if len(normalized_content) > MAX_NOTE_CHARS:
+            raise ValidationError(f"content must be at most {MAX_NOTE_CHARS} characters.")
         if expected_version < 1:
             raise ValidationError("expected_version must be greater than or equal to 1.")
         self._validate_idempotency_key(idempotency_key)
@@ -214,7 +223,7 @@ class ResearchLibraryService:
                 raise NotFoundError(str(exc)) from exc
             except RepositoryConflictError as exc:
                 raise ConflictError(str(exc)) from exc
-            response = {**updated, "status": "updated"}
+            response = {**updated, "status": "updated", "content_trust": "untrusted_user_input"}
             self._record_write(conn, operation=operation, target_type="note", target_id=normalized_note_id, idempotency_key=idempotency_key, payload=response, created_at=now)
             self._repository.store_idempotency_result(conn, operation=operation, idempotency_key=idempotency_key, response=response, created_at=now)
             return response
