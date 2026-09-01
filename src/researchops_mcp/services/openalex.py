@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
+import random
 import re
+import time
 from dataclasses import dataclass
-from typing import Any, Literal
+from datetime import datetime, timezone
+from typing import Any, Callable, Literal, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -14,7 +18,13 @@ from researchops_mcp.security import DEFAULT_ALLOWED_OUTBOUND_DOMAINS, MAX_QUERY
 
 BASE_URL = "https://api.openalex.org"
 DEFAULT_MAILTO = "learning-project@example.com"
-DEFAULT_TIMEOUT_SECONDS = 10
+DEFAULT_TIMEOUT_SECONDS = float(os.getenv("MCP_OPENALEX_TIMEOUT_SECONDS", "5"))
+DEFAULT_DEADLINE_SECONDS = float(os.getenv("MCP_OPENALEX_DEADLINE_SECONDS", "12"))
+DEFAULT_RETRY_ATTEMPTS = int(os.getenv("MCP_OPENALEX_RETRY_ATTEMPTS", "2"))
+DEFAULT_RETRY_BACKOFF_SECONDS = float(os.getenv("MCP_OPENALEX_RETRY_BACKOFF_SECONDS", "0.25"))
+DEFAULT_RETRY_JITTER_SECONDS = float(os.getenv("MCP_OPENALEX_RETRY_JITTER_SECONDS", "0.1"))
+DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD = int(os.getenv("MCP_OPENALEX_BREAKER_FAILURE_THRESHOLD", "3"))
+DEFAULT_CIRCUIT_BREAKER_RESET_SECONDS = float(os.getenv("MCP_OPENALEX_BREAKER_RESET_SECONDS", "30"))
 MAX_RESULTS_PER_PAGE = 10
 SEARCH_MODES = {"balanced", "title", "exact", "broad"}
 OpenAlexSearchMode = Literal["balanced", "title", "exact", "broad"]
@@ -37,6 +47,16 @@ class DependencyError(PaperServiceError):
     """Raised when an upstream dependency cannot satisfy the request."""
 
 
+class CircuitBreakerOpenError(DependencyError):
+    """Raised when the OpenAlex circuit breaker is open."""
+
+
+class PaperMetadataStore(Protocol):
+    def cache_paper(self, paper: dict[str, Any], *, updated_at: str) -> None: ...
+
+    def get_cached_paper(self, paper_id: str) -> dict[str, Any] | None: ...
+
+
 @dataclass(slots=True)
 class SearchResponse:
     query: str
@@ -55,6 +75,33 @@ class SearchResponse:
         return self.page + 1 if self.has_more else None
 
 
+@dataclass(slots=True)
+class CircuitBreaker:
+    failure_threshold: int = DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD
+    reset_timeout_seconds: float = DEFAULT_CIRCUIT_BREAKER_RESET_SECONDS
+    time_func: Callable[[], float] = time.monotonic
+    consecutive_failures: int = 0
+    opened_at: float | None = None
+
+    def before_request(self) -> None:
+        if self.opened_at is None:
+            return
+        if self.time_func() - self.opened_at >= self.reset_timeout_seconds:
+            self.opened_at = None
+            self.consecutive_failures = 0
+            return
+        raise CircuitBreakerOpenError("OpenAlex circuit breaker is open after repeated failures. Try again later.")
+
+    def record_success(self) -> None:
+        self.consecutive_failures = 0
+        self.opened_at = None
+
+    def record_failure(self) -> None:
+        self.consecutive_failures += 1
+        if self.consecutive_failures >= self.failure_threshold:
+            self.opened_at = self.time_func()
+
+
 class OpenAlexClient:
     """Small OpenAlex client for the read-only ResearchOps server."""
 
@@ -62,12 +109,36 @@ class OpenAlexClient:
         self,
         *,
         mailto: str = DEFAULT_MAILTO,
-        timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+        timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+        deadline_seconds: float = DEFAULT_DEADLINE_SECONDS,
+        retry_attempts: int = DEFAULT_RETRY_ATTEMPTS,
+        retry_backoff_seconds: float = DEFAULT_RETRY_BACKOFF_SECONDS,
+        retry_jitter_seconds: float = DEFAULT_RETRY_JITTER_SECONDS,
+        circuit_breaker_failure_threshold: int = DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+        circuit_breaker_reset_seconds: float = DEFAULT_CIRCUIT_BREAKER_RESET_SECONDS,
         allowed_domains: tuple[str, ...] = DEFAULT_ALLOWED_OUTBOUND_DOMAINS,
+        fetch_json: Callable[[str, float], dict[str, Any]] | None = None,
+        sleep_func: Callable[[float], None] = time.sleep,
+        random_func: Callable[[], float] = random.random,
+        time_func: Callable[[], float] = time.monotonic,
+        circuit_breaker: CircuitBreaker | None = None,
     ) -> None:
         self._mailto = mailto
         self._timeout_seconds = timeout_seconds
+        self._deadline_seconds = deadline_seconds
+        self._retry_attempts = retry_attempts
+        self._retry_backoff_seconds = retry_backoff_seconds
+        self._retry_jitter_seconds = retry_jitter_seconds
         self._allowed_domains = allowed_domains
+        self._fetch_json = fetch_json
+        self._sleep_func = sleep_func
+        self._random_func = random_func
+        self._time_func = time_func
+        self._circuit_breaker = circuit_breaker or CircuitBreaker(
+            failure_threshold=circuit_breaker_failure_threshold,
+            reset_timeout_seconds=circuit_breaker_reset_seconds,
+            time_func=time_func,
+        )
 
     def search_works(self, *, query: str, page: int, per_page: int, search_mode: OpenAlexSearchMode) -> SearchResponse:
         if search_mode == "title":
@@ -136,6 +207,31 @@ class OpenAlexClient:
     def _get_json(self, path: str) -> dict[str, Any]:
         url = f"{BASE_URL}{path}"
         ensure_outbound_url_allowed(url, allowed_domains=self._allowed_domains)
+        attempt = 0
+        started_at = self._time_func()
+
+        while True:
+            self._circuit_breaker.before_request()
+            try:
+                payload = self._request_json(url)
+            except DependencyError:
+                self._circuit_breaker.record_failure()
+                if attempt >= self._retry_attempts:
+                    raise
+                delay = self._retry_backoff_seconds * (2**attempt) + (self._random_func() * self._retry_jitter_seconds)
+                if (self._time_func() - started_at) + delay >= self._deadline_seconds:
+                    raise DependencyError("OpenAlex request deadline exceeded before another retry could be attempted.")
+                self._sleep_func(delay)
+                attempt += 1
+                continue
+
+            self._circuit_breaker.record_success()
+            return payload
+
+    def _request_json(self, url: str) -> dict[str, Any]:
+        if self._fetch_json is not None:
+            return self._fetch_json(url, self._timeout_seconds)
+
         request = Request(
             url=url,
             headers={
@@ -161,8 +257,9 @@ class OpenAlexClient:
 class PaperService:
     """Business-facing paper operations used by MCP tools."""
 
-    def __init__(self, client: OpenAlexClient) -> None:
+    def __init__(self, client: OpenAlexClient, *, paper_store: PaperMetadataStore | None = None) -> None:
         self._client = client
+        self._paper_store = paper_store
 
     def search_papers(self, *, query: str, page: int, limit: int, search_mode: OpenAlexSearchMode = "balanced") -> dict[str, Any]:
         normalized_query = query.strip()
@@ -179,6 +276,7 @@ class PaperService:
             raise ValidationError(f"search_mode must be one of: {allowed}.")
 
         result = self._client.search_works(query=normalized_query, page=page, per_page=limit, search_mode=search_mode)
+        self._cache_papers(result.results)
         return {
             "query": normalized_query,
             "page": page,
@@ -194,7 +292,25 @@ class PaperService:
         }
 
     def get_paper(self, paper_id: str) -> dict[str, Any]:
-        return self._client.get_work(paper_id)
+        normalized_paper_id = normalize_paper_id(paper_id)
+        try:
+            paper = self._client.get_work(normalized_paper_id)
+        except DependencyError as exc:
+            cached = self._paper_store.get_cached_paper(normalized_paper_id) if self._paper_store is not None else None
+            if cached is None:
+                raise
+            return {
+                **cached["paper"],
+                "cache_status": "stale",
+                "cached_at": cached["updated_at"],
+                "dependency_warning": f"{exc} Returning cached paper metadata.",
+            }
+
+        self._cache_papers([paper])
+        return {
+            **paper,
+            "cache_status": "live",
+        }
 
     def export_bibtex(self, paper_id: str) -> dict[str, str]:
         work = self.get_paper(paper_id)
@@ -202,6 +318,13 @@ class PaperService:
             "paper_id": work["paper_id"],
             "bibtex": to_bibtex_entry(work),
         }
+
+    def _cache_papers(self, papers: list[dict[str, Any]]) -> None:
+        if self._paper_store is None:
+            return
+        updated_at = utc_now()
+        for paper in papers:
+            self._paper_store.cache_paper(paper, updated_at=updated_at)
 
 
 def normalize_paper_id(paper_id: str) -> str:
@@ -294,3 +417,7 @@ def slugify_author(authors: str) -> str:
 
 def sanitize_bibtex_value(value: str) -> str:
     return value.replace("{", "").replace("}", "")
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()

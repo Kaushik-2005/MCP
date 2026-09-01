@@ -3,7 +3,7 @@
 ## Scope
 
 This started as the Day 1 threat-model outline for the ResearchOps MCP project.
-It has now been extended through Day 9 to reflect authenticated remote access, scoped authorization, trust labeling, outbound restrictions, request-size enforcement, and rate limiting.
+It has now been extended through Day 10 to reflect authenticated remote access, scoped authorization, trust labeling, outbound restrictions, request-size enforcement, rate limiting, and dependency-failure resilience.
 
 ## Assets
 
@@ -72,6 +72,8 @@ It has now been extended through Day 9 to reflect authenticated remote access, s
 - Upstream timeouts and rate limits may stall requests.
 - Expensive or repeated searches may create backpressure or denial-of-service conditions.
 - One authenticated caller may monopolize the service without additional abuse controls.
+- Repeated retries without backoff can amplify an upstream outage.
+- Missing cache semantics can make degraded responses misleading.
 
 ## Initial Mitigations
 
@@ -119,16 +121,35 @@ It has now been extended through Day 9 to reflect authenticated remote access, s
 - oversized request bodies are rejected by middleware in automated tests
 - non-allowlisted outbound targets are rejected in automated tests
 
-## Remaining Day 10+ Security Gaps
+## Day 10 Reliability State
+
+### Controls Added
+
+- per-attempt OpenAlex timeout budget
+- overall deadline budget across retries
+- exponential backoff with jitter for safe upstream reads
+- process-local circuit breaker for repeated upstream failure
+- SQLite-backed cached paper fallback for stable-ID lookups
+
+### Verified Behaviors On September 1, 2026
+
+- `pytest tests/unit/test_openalex_service.py` passed with retry, breaker, stale-cache fallback, and no-cache failure coverage
+- full `pytest` passed with 44 tests
+- `python src/server.py --help` listed the new reliability flags
+- `python client/cli.py call-tool health_check` returned the configured timeout, deadline, retry, and breaker settings
+
+## Remaining Day 11+ Security And Reliability Gaps
 
 - The demo token verifier is not a production identity system.
 - The current rate limiter is not shared across multiple service instances.
+- The current circuit breaker is also process-local.
 - The CLI still collapses some raw HTTP auth or rate-limit failures into generic transport errors.
 - No external API gateway, WAF, or distributed abuse-control layer is in place yet.
 - The outbound allowlist currently protects the OpenAlex client only; future networked tools will need the same discipline.
+- Search-result caching semantics are not designed yet.
 
 ## Open Questions
 
 - How much user identity will be trusted from the host versus verified directly?
 - Which operations need human approval in the client versus strict denial in the server?
-- When the project becomes multi-instance, which shared store should back rate limiting and broader abuse controls?
+- When the project becomes multi-instance, which shared store should back rate limiting, circuit breaking, and broader abuse controls?

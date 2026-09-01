@@ -1242,6 +1242,166 @@ MCP security is not just authentication. A secure MCP server must assume that to
 
 ### Day 10: Reliability Engineering
 
+#### Learning objectives
+
+- Understand timeout budgets, retry safety, exponential backoff with jitter, and circuit breakers.
+- Distinguish graceful degradation from hard failure.
+- Understand where caching belongs in ResearchOps MCP.
+- Understand why stable-ID lookups are better cache candidates than query-based search results.
+- Learn how to test transient dependency failure without changing the MCP surface.
+
+#### Core concepts
+
+- Reliability means the server behaves predictably when dependencies are slow, unavailable, or rate-limited.
+- A timeout budget limits how long one upstream attempt may take.
+- A deadline budget limits the total time across all retry attempts.
+- Retries should only be used automatically for safe operations, usually read-only and idempotent ones.
+- Exponential backoff spaces retries further apart after repeated failure.
+- Jitter adds randomness so many callers do not retry in lockstep.
+- A circuit breaker stops sending traffic to a dependency that is already failing repeatedly.
+- Graceful degradation means returning a lower-quality but still useful answer when a safe fallback exists.
+- `get_paper` is a strong cache candidate because one `paper_id` maps to one stable paper. `search_papers` is weaker because results depend on query, ranking, pagination, and upstream freshness.
+
+#### How it works
+
+1. `OpenAlexClient` now uses a per-attempt timeout and an overall deadline budget.
+2. When a transient dependency failure happens, the client retries a limited number of times with exponential backoff and jitter.
+3. Repeated dependency failures increment the circuit breaker.
+4. Once the breaker opens, later calls fail fast instead of hammering OpenAlex again.
+5. Successful reads reset the breaker and refresh cached paper metadata in SQLite.
+6. `PaperService.get_paper` falls back to cached paper data when OpenAlex is unavailable and cached metadata exists.
+7. If no safe fallback exists, the dependency error is surfaced instead of inventing results.
+
+#### Example
+
+Retry example:
+
+- `search_papers("Model Context Protocol")` hits a transient network failure.
+- The server retries because this is a read-only request.
+- Each retry waits longer than the previous one, with a small random component.
+- If a later attempt succeeds before the deadline, the caller gets a normal response.
+
+Graceful degradation example:
+
+- `get_paper("W1234567890")` fails because OpenAlex is temporarily unavailable.
+- The server checks the SQLite paper cache.
+- If cached metadata exists, it returns that paper with `cache_status: stale`, `cached_at`, and a dependency warning.
+- If no cached paper exists, the dependency error is returned.
+
+Circuit-breaker example:
+
+- OpenAlex fails repeatedly.
+- The breaker reaches its configured threshold and opens.
+- New requests fail fast for the reset window instead of wasting time and upstream quota.
+- After the reset period, another attempt is allowed again.
+
+#### Role in our project
+
+Day 10 makes ResearchOps safer under dependency trouble without changing the tool, resource, or prompt interface.
+The focus is the OpenAlex dependency boundary because that is the main external read dependency in the project.
+
+In ResearchOps, Day 10 adds:
+
+- retry with backoff and jitter for safe upstream reads
+- circuit-breaker state for repeated OpenAlex failure
+- per-attempt timeout and total deadline settings
+- cached paper persistence and cached fallback for `get_paper`
+- reliability-oriented verification for retry success, fail-fast behavior, stale cache fallback, and no-cache hard failure
+
+#### Why it is designed this way
+
+- Retry logic belongs near the upstream client because that layer understands dependency failure modes.
+- Cache storage belongs in the repository because cached paper metadata is persistent state.
+- Fallback policy belongs in the paper service because it is a business decision, not only a transport decision.
+- The MCP handlers stay thin because reliability should improve behavior without leaking implementation complexity into every tool definition.
+- Search caching was intentionally not added automatically because stale query results are harder to interpret safely.
+
+#### Alternatives and trade-offs
+
+- No retries at all:
+  - simpler
+  - worse resilience for temporary upstream failure
+- Retry every operation automatically:
+  - looks robust
+  - dangerous for writes or non-idempotent actions
+- Cache search results immediately:
+  - can improve speed
+  - risks stale or misleading ranking and pagination behavior
+- Put breaker logic in the MCP handler:
+  - technically possible
+  - wrong boundary because the breaker protects the upstream dependency, not one specific handler
+
+#### Failure modes
+
+- Immediate retries without backoff can overload a dependency that is already failing.
+- Retrying writes without idempotency can duplicate state changes.
+- A circuit breaker that never resets can turn temporary failure into a permanent outage.
+- Returning stale search results without explicit semantics can mislead the caller.
+- Missing cache metadata can make it impossible to distinguish live and stale responses.
+- A deadline that is shorter than the retry schedule can make retries pointless.
+
+#### Common mistakes
+
+- Treating timeouts and deadlines as the same thing.
+- Retrying because "it might work" without checking whether the operation is safe.
+- Using cache fallback without telling the caller the data is stale.
+- Thinking a circuit breaker replaces retries instead of complementing them.
+- Caching search results and stable-ID objects as if they had the same freshness semantics.
+
+#### Security considerations
+
+- Reliability controls should not bypass Day 8 and Day 9 security boundaries.
+- Cached paper data is still untrusted external data and must keep the same trust labeling.
+- Fallback behavior must not leak another user's private data.
+- Fail-fast circuit-breaker behavior also reduces abuse pressure on upstream dependencies.
+- Deadline and retry settings should be bounded so they cannot be turned into a denial-of-service amplifier.
+
+#### Interview explanation
+
+Reliability engineering in MCP means the server stays predictable when dependencies are slow or failing. In ResearchOps Day 10, the OpenAlex read path now has per-attempt timeouts, an overall deadline, safe retries with backoff and jitter, a circuit breaker for repeated failure, and cached fallback for stable-ID paper lookups. The key design idea is to keep reliability behavior at the dependency and service layers while preserving the same MCP interface contract.
+
+#### Questions for revision
+
+1. Why is `get_paper` a safer cache candidate than `search_papers`?
+   Answer: `get_paper` uses a stable identifier and usually maps to one deterministic object, so stale fallback still means the same paper. `search_papers` depends on query text, ranking, pagination, and changing upstream index state, so stale cached search results are harder to trust automatically.
+
+2. Why should retries use backoff with jitter?
+   Answer: Backoff reduces pressure on a struggling dependency by spacing attempts further apart. Jitter prevents many callers from retrying at the same time and creating synchronized retry spikes.
+
+3. What does a circuit breaker do that normal retries do not?
+   Answer: Retries continue trying within one request. A circuit breaker remembers repeated failure across requests and temporarily stops sending more traffic to the failing dependency.
+
+4. When should ResearchOps return stale cached paper metadata?
+   Answer: When a stable-ID paper lookup fails upstream but the server has previously cached metadata for that exact paper and can mark the fallback clearly as stale.
+
+5. Why is retrying `create_reading_list` riskier than retrying `search_papers`?
+   Answer: `create_reading_list` is a write that changes durable state, so retries can duplicate side effects unless idempotency is enforced. `search_papers` is a read-only operation.
+
+#### Active recall review
+
+1. Question: What is the difference between a timeout budget and a deadline budget?
+   Answer: A timeout budget limits one attempt, while a deadline budget limits the total time across all attempts and waits.
+
+2. Question: Why should the circuit breaker open after repeated failures instead of letting every request keep retrying forever?
+   Answer: Because fail-fast behavior protects the server and the upstream dependency from wasting latency, compute, and quota on a dependency that is already known to be failing.
+
+3. Question: Why is cached fallback appropriate for `get_paper` but not automatically for `search_papers`?
+   Answer: `get_paper` is keyed by one stable identifier, so stale fallback still refers to the same object. `search_papers` depends on ranking and freshness semantics that make stale automatic fallback more misleading.
+
+4. Question: What did the September 1, 2026 `health_check` verification prove?
+   Answer: It proved the reliability settings were not only added to argparse; they were actually wired into the server runtime and exposed by the running MCP service.
+
+5. Question: When no cached paper exists and OpenAlex is down, what should the server do?
+   Answer: It should return the dependency failure instead of inventing or guessing paper data.
+
+#### References
+
+- MCP specification latest: https://modelcontextprotocol.io/specification/latest
+- OpenAI MCP guide: https://developers.openai.com/api/docs/guides/tools-connectors-mcp
+- AWS Builders Library on timeouts, retries, and backoff: https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/
+- Martin Fowler on Circuit Breaker: https://martinfowler.com/bliki/CircuitBreaker.html
+- Google SRE book overview: https://sre.google/sre-book/table-of-contents/
+
 ## Module 5: Testing, Evaluation, and Production
 
 ### Day 11: Protocol and Application Testing
@@ -1251,6 +1411,7 @@ MCP security is not just authentication. A secure MCP server must assume that to
 ### Day 13: Observability and Scaling
 
 ### Day 14: Advanced Features and Final Release
+
 
 
 

@@ -39,3 +39,23 @@
 - Correct explanation: The text is still relevant input data and may explain the caller's requested comparison focus. ResearchOps preserves it as data but wraps the prompt with an explicit security warning so the model treats it as untrusted evidence rather than instructions to obey.
 - Revisit on: Day 11
 - Status: Understood
+
+## Question
+
+- Date: 2026-09-01
+- Related day: Day 10
+- Question: Why is cached fallback appropriate for `get_paper` but not automatically for `search_papers`?
+- Current understanding: `get_paper` results are deterministic as it uses a stable id and `search_papers` results are not deterministic.
+- Correct explanation: `get_paper` is tied to one stable identifier, so stale fallback still refers to the same paper and can be marked clearly. `search_papers` depends on query text, ranking, pagination, and upstream freshness, so automatic stale fallback is more misleading unless explicit search-cache semantics are designed.
+- Revisit on: Day 12
+- Status: Understood
+
+## Question
+
+- Date: 2026-09-01
+- Related day: Day 10
+- Question: Why should the circuit breaker open after repeated failures instead of letting every request keep retrying forever?
+- Current understanding: It stops sending more traffic to an already failing service for some duration.
+- Correct explanation: The circuit breaker remembers repeated dependency failure across requests and fails fast for a reset window. That protects latency, upstream quota, and server resources instead of letting each new request repeat the same expensive failure cycle.
+- Revisit on: Day 12
+- Status: Understood

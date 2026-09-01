@@ -38,7 +38,16 @@ from researchops_mcp.services.context import (
     build_reading_list_resource_document,
 )
 from researchops_mcp.services.library import LibraryServiceError, ResearchLibraryService
-from researchops_mcp.services.openalex import OpenAlexClient, PaperService, PaperServiceError
+from researchops_mcp.services.openalex import (
+    DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+    DEFAULT_CIRCUIT_BREAKER_RESET_SECONDS,
+    DEFAULT_DEADLINE_SECONDS,
+    DEFAULT_RETRY_ATTEMPTS,
+    DEFAULT_TIMEOUT_SECONDS,
+    OpenAlexClient,
+    PaperService,
+    PaperServiceError,
+)
 
 LOCAL_DEFAULT_DB_PATH = str(Path(__file__).resolve().parents[2] / "data" / "researchops.db")
 DEFAULT_DB_PATH = os.getenv("DATABASE_PATH", LOCAL_DEFAULT_DB_PATH)
@@ -50,6 +59,15 @@ DEFAULT_STATELESS_HTTP = os.getenv("MCP_STATELESS_HTTP", "false").strip().lower(
 DEFAULT_MAX_HTTP_BODY_BYTES_SETTING = int(os.getenv("MCP_MAX_HTTP_BODY_BYTES", str(DEFAULT_MAX_HTTP_BODY_BYTES)))
 DEFAULT_RATE_LIMIT_MAX_REQUESTS_SETTING = int(os.getenv("MCP_RATE_LIMIT_MAX_REQUESTS", str(DEFAULT_RATE_LIMIT_MAX_REQUESTS)))
 DEFAULT_RATE_LIMIT_WINDOW_SECONDS_SETTING = int(os.getenv("MCP_RATE_LIMIT_WINDOW_SECONDS", str(DEFAULT_RATE_LIMIT_WINDOW_SECONDS)))
+DEFAULT_OPENALEX_TIMEOUT_SECONDS_SETTING = float(os.getenv("MCP_OPENALEX_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS)))
+DEFAULT_OPENALEX_DEADLINE_SECONDS_SETTING = float(os.getenv("MCP_OPENALEX_DEADLINE_SECONDS", str(DEFAULT_DEADLINE_SECONDS)))
+DEFAULT_OPENALEX_RETRY_ATTEMPTS_SETTING = int(os.getenv("MCP_OPENALEX_RETRY_ATTEMPTS", str(DEFAULT_RETRY_ATTEMPTS)))
+DEFAULT_OPENALEX_BREAKER_FAILURE_THRESHOLD_SETTING = int(
+    os.getenv("MCP_OPENALEX_BREAKER_FAILURE_THRESHOLD", str(DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD))
+)
+DEFAULT_OPENALEX_BREAKER_RESET_SECONDS_SETTING = float(
+    os.getenv("MCP_OPENALEX_BREAKER_RESET_SECONDS", str(DEFAULT_CIRCUIT_BREAKER_RESET_SECONDS))
+)
 
 
 def create_server(
@@ -59,10 +77,24 @@ def create_server(
     auth_enabled: bool = DEFAULT_AUTH_ENABLED,
     resource_server_url: str = DEFAULT_RESOURCE_SERVER_URL,
     auth_issuer_url: str = DEFAULT_AUTH_ISSUER_URL,
+    openalex_timeout_seconds: float = DEFAULT_OPENALEX_TIMEOUT_SECONDS_SETTING,
+    openalex_deadline_seconds: float = DEFAULT_OPENALEX_DEADLINE_SECONDS_SETTING,
+    openalex_retry_attempts: int = DEFAULT_OPENALEX_RETRY_ATTEMPTS_SETTING,
+    openalex_breaker_failure_threshold: int = DEFAULT_OPENALEX_BREAKER_FAILURE_THRESHOLD_SETTING,
+    openalex_breaker_reset_seconds: float = DEFAULT_OPENALEX_BREAKER_RESET_SECONDS_SETTING,
 ) -> MCPServer:
-    resolved_paper_service = paper_service or PaperService(OpenAlexClient())
     repository = SQLiteRepository(database_path or DEFAULT_DB_PATH)
     seed_known_users(repository)
+    resolved_paper_service = paper_service or PaperService(
+        OpenAlexClient(
+            timeout_seconds=openalex_timeout_seconds,
+            deadline_seconds=openalex_deadline_seconds,
+            retry_attempts=openalex_retry_attempts,
+            circuit_breaker_failure_threshold=openalex_breaker_failure_threshold,
+            circuit_breaker_reset_seconds=openalex_breaker_reset_seconds,
+        ),
+        paper_store=repository,
+    )
     library_service = ResearchLibraryService(repository, resolved_paper_service)
     library_service.ensure_demo_data()
 
@@ -92,7 +124,7 @@ def create_server(
     )
 
     @server.tool()
-    def health_check() -> dict[str, str | bool | int]:
+    def health_check() -> dict[str, str | bool | int | float]:
         """Check whether the ResearchOps MCP server is reachable."""
         return {
             "status": "ok",
@@ -103,6 +135,11 @@ def create_server(
             "auth_enabled": auth_enabled,
             "max_http_body_bytes": DEFAULT_MAX_HTTP_BODY_BYTES_SETTING,
             "rate_limit_max_requests": DEFAULT_RATE_LIMIT_MAX_REQUESTS_SETTING,
+            "openalex_timeout_seconds": openalex_timeout_seconds,
+            "openalex_deadline_seconds": openalex_deadline_seconds,
+            "openalex_retry_attempts": openalex_retry_attempts,
+            "openalex_breaker_failure_threshold": openalex_breaker_failure_threshold,
+            "openalex_breaker_reset_seconds": openalex_breaker_reset_seconds,
         }
 
     @server.tool()
@@ -268,6 +305,11 @@ def create_streamable_http_app(
     max_http_body_bytes: int = DEFAULT_MAX_HTTP_BODY_BYTES_SETTING,
     rate_limit_max_requests: int = DEFAULT_RATE_LIMIT_MAX_REQUESTS_SETTING,
     rate_limit_window_seconds: int = DEFAULT_RATE_LIMIT_WINDOW_SECONDS_SETTING,
+    openalex_timeout_seconds: float = DEFAULT_OPENALEX_TIMEOUT_SECONDS_SETTING,
+    openalex_deadline_seconds: float = DEFAULT_OPENALEX_DEADLINE_SECONDS_SETTING,
+    openalex_retry_attempts: int = DEFAULT_OPENALEX_RETRY_ATTEMPTS_SETTING,
+    openalex_breaker_failure_threshold: int = DEFAULT_OPENALEX_BREAKER_FAILURE_THRESHOLD_SETTING,
+    openalex_breaker_reset_seconds: float = DEFAULT_OPENALEX_BREAKER_RESET_SECONDS_SETTING,
 ):
     """Build a Streamable HTTP ASGI app for remote-style serving."""
     app_server = create_server(
@@ -275,6 +317,11 @@ def create_streamable_http_app(
         auth_enabled=auth_enabled,
         resource_server_url=resource_server_url,
         auth_issuer_url=auth_issuer_url,
+        openalex_timeout_seconds=openalex_timeout_seconds,
+        openalex_deadline_seconds=openalex_deadline_seconds,
+        openalex_retry_attempts=openalex_retry_attempts,
+        openalex_breaker_failure_threshold=openalex_breaker_failure_threshold,
+        openalex_breaker_reset_seconds=openalex_breaker_reset_seconds,
     )
     app = app_server.streamable_http_app(
         streamable_http_path=streamable_http_path,
@@ -362,6 +409,36 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_RATE_LIMIT_WINDOW_SECONDS_SETTING,
         help="Length of the fixed-window rate-limit interval in seconds.",
     )
+    parser.add_argument(
+        "--openalex-timeout-seconds",
+        type=float,
+        default=DEFAULT_OPENALEX_TIMEOUT_SECONDS_SETTING,
+        help="Per-attempt OpenAlex timeout budget in seconds.",
+    )
+    parser.add_argument(
+        "--openalex-deadline-seconds",
+        type=float,
+        default=DEFAULT_OPENALEX_DEADLINE_SECONDS_SETTING,
+        help="Total OpenAlex request deadline budget across retries in seconds.",
+    )
+    parser.add_argument(
+        "--openalex-retry-attempts",
+        type=int,
+        default=DEFAULT_OPENALEX_RETRY_ATTEMPTS_SETTING,
+        help="Number of retry attempts for transient OpenAlex dependency failures.",
+    )
+    parser.add_argument(
+        "--openalex-breaker-failure-threshold",
+        type=int,
+        default=DEFAULT_OPENALEX_BREAKER_FAILURE_THRESHOLD_SETTING,
+        help="Number of consecutive OpenAlex dependency failures before opening the circuit breaker.",
+    )
+    parser.add_argument(
+        "--openalex-breaker-reset-seconds",
+        type=float,
+        default=DEFAULT_OPENALEX_BREAKER_RESET_SECONDS_SETTING,
+        help="How long the OpenAlex circuit breaker stays open before another attempt is allowed.",
+    )
     return parser
 
 
@@ -372,6 +449,11 @@ def main(argv: list[str] | None = None) -> None:
         auth_enabled=args.auth_enabled,
         resource_server_url=args.resource_server_url,
         auth_issuer_url=args.auth_issuer_url,
+        openalex_timeout_seconds=args.openalex_timeout_seconds,
+        openalex_deadline_seconds=args.openalex_deadline_seconds,
+        openalex_retry_attempts=args.openalex_retry_attempts,
+        openalex_breaker_failure_threshold=args.openalex_breaker_failure_threshold,
+        openalex_breaker_reset_seconds=args.openalex_breaker_reset_seconds,
     )
     if args.transport == "stdio":
         runtime_server.run(transport="stdio")
@@ -388,6 +470,11 @@ def main(argv: list[str] | None = None) -> None:
         max_http_body_bytes=args.max_http_body_bytes,
         rate_limit_max_requests=args.rate_limit_max_requests,
         rate_limit_window_seconds=args.rate_limit_window_seconds,
+        openalex_timeout_seconds=args.openalex_timeout_seconds,
+        openalex_deadline_seconds=args.openalex_deadline_seconds,
+        openalex_retry_attempts=args.openalex_retry_attempts,
+        openalex_breaker_failure_threshold=args.openalex_breaker_failure_threshold,
+        openalex_breaker_reset_seconds=args.openalex_breaker_reset_seconds,
     )
     uvicorn.run(app, host=args.host, port=args.port)
 

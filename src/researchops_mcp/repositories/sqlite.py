@@ -206,6 +206,23 @@ class SQLiteRepository:
             ),
         )
 
+    def cache_paper(self, paper: dict[str, Any], *, updated_at: str) -> None:
+        with self.transaction() as conn:
+            self.save_paper(conn, paper, updated_at=updated_at)
+
+    def get_cached_paper(self, paper_id: str) -> dict[str, Any] | None:
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT data_json, updated_at FROM papers WHERE paper_id = ?",
+                (paper_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return {
+                "paper": json.loads(row["data_json"]),
+                "updated_at": row["updated_at"],
+            }
+
     def add_paper_to_list(
         self,
         conn: sqlite3.Connection,

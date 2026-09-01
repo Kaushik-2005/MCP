@@ -4,7 +4,7 @@ ResearchOps MCP is a learning project for building a production-style Model Cont
 
 ## Current Status
 
-The project is in Day 9 of the roadmap as of August 29, 2026. The server supports local `stdio`, Streamable HTTP, Render staging deployment, authenticated multi-user access, and the first security-hardening layer for bounded input, rate limiting, outbound controls, and untrusted-content labeling.
+The project is in Day 10 of the roadmap as of September 1, 2026. The server supports local `stdio`, Streamable HTTP, Render staging deployment, authenticated multi-user access, security hardening, and reliability controls for timeout budgets, retries, circuit breaking, and cached paper fallback.
 
 ## Planned Capabilities
 
@@ -156,7 +156,7 @@ Run the dedicated Day 9 tests:
 pytest tests/unit/test_day9_security.py
 ```
 
-## Docker
+## Day 10 Reliability Testing`r`n`r`nVerify the new reliability settings are exposed:`r`n`r`n```powershell`r`npython src/server.py --help`r`npython client/cli.py call-tool health_check`r`n``` `r`n`r`nRun the dedicated Day 10 reliability tests:`r`n`r`n```powershell`r`npytest tests/unit/test_openalex_service.py`r`n``` `r`n`r`nWhat Day 10 now guarantees:`r`n`r`n- safe upstream read retries use backoff and jitter`r`n- repeated OpenAlex failures open a circuit breaker and fail fast`r`n- stable-ID paper retrieval can fall back to cached metadata with stale markers`r`n- no cached paper means the dependency error is surfaced instead of guessing data`r`n`r`n## Docker
 
 Build the container image:
 
@@ -226,3 +226,4 @@ python client/cli.py --connection-mode http --server-url https://<your-service-n
 - Remote auth can be enabled by supplying the auth-related environment variables on Render.
 - Persistent remote storage and full production OAuth remain later roadmap concerns.
 - The current staging database path under `/tmp` is intentionally disposable.
+

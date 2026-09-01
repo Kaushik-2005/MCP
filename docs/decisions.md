@@ -149,3 +149,17 @@
 - Why: This places the most important security boundaries where the roadmap can teach them clearly, keeps the implementation observable and testable, and improves the current local and staging server immediately without requiring new infrastructure.
 - Trade-offs: The current limiter is single-process only, the allowlist is intentionally simple, and some protections will need to move or be duplicated at proxy or platform level in a later production deployment.
 - Consequences: The Day 9 server now has meaningful abuse resistance and safer model-facing context handling, while Day 13 or later can upgrade these controls to shared infrastructure without redesigning the MCP surface.
+
+## Decision: Add Retries and Cached Fallback Only For Safe OpenAlex Reads
+
+- Date: 2026-09-01
+- Status: Accepted
+- Context: Day 10 required predictable behavior during dependency failures, but applying retries and fallback indiscriminately across all operations would risk duplicate writes, stale search behavior, and incorrect MCP responses.
+- Options considered:
+  - Do not add retries or cache fallback yet
+  - Retry every MCP operation uniformly
+  - Apply resilience only to safe upstream read paths and limit fallback to stable-ID paper retrieval
+- Decision: Add timeout and deadline budgets, retry with backoff and jitter, and circuit-breaker protection around OpenAlex reads; cache stable-ID paper metadata in SQLite; and use stale-cache fallback only for `get_paper` style retrieval.
+- Why: This improves resilience where the semantics are safe and clear, while avoiding accidental duplication of writes or misleading automatic fallback for query-based search results.
+- Trade-offs: Search remains dependency-sensitive, the breaker is still process-local, and stale cached paper metadata may lag the upstream source.
+- Consequences: ResearchOps now behaves predictably under transient upstream failure without changing the MCP interface contract, and later phases can extend reliability to broader caching or shared breaker state if justified.

@@ -2,10 +2,10 @@
 
 ## Current Position
 
-- Current module: Module 4 - Authentication, Security, and Reliability
-- Current day: Day 9 - MCP security
-- Current task: Day 9 formally completed and documented
-- Next milestone: Begin Day 10 reliability engineering
+- Current module: Module 5 - Testing, Evaluation, and Production
+- Current day: Day 11 - protocol and application testing
+- Current task: Day 10 completed; Day 11 not started yet
+- Next milestone: Begin automated protocol, contract, and negative testing
 - Active blockers: None
 
 ## Roadmap Progress
@@ -21,7 +21,7 @@
 | 7 | Client and Remote Transport | Streamable HTTP and deployment | Completed | Remotely accessible staging MCP server | `pytest` passed with 24 tests; stdio and local HTTP both verified; Render deployment at `https://researchops-mcp.onrender.com/mcp` passed remote `discover`, `list-tools`, `health_check`, and `search_papers` on 2026-08-25; Inspector and CLI both validated the Streamable HTTP MCP surface | 5 |
 | 8 | Security and Reliability | Authentication and authorization | Completed | Authenticated multi-user remote server | `pytest` passed with 32 tests; dedicated Day 8 HTTP auth tests verified `401` for missing and invalid tokens and `403` for insufficient scope; manual local HTTP checks verified Bob cannot write notes with a read-only token and cannot read Alice's list | 4 |
 | 9 | Security and Reliability | MCP security | Completed | Security checklist, threat model, and adversarial tests | `pytest tests/unit/test_day9_security.py` passed with 8 tests and full `pytest` passed with 40 tests on 2026-08-29; manual HTTP checks verified untrusted-content warnings on `paper://W7129030749`, prompt hardening on `compare_papers`, ownership denial for Bob reading Alice's list, and rate limiting after repeated authenticated requests | 4 |
-| 10 | Security and Reliability | Reliability engineering | Not Started | Predictable behavior during dependency failures | — | — |
+| 10 | Security and Reliability | Reliability engineering | Completed | Predictable behavior during dependency failures | `pytest tests/unit/test_openalex_service.py` passed with 9 tests and full `pytest` passed with 44 tests on 2026-09-01; `python src/server.py --help` and `python client/cli.py call-tool health_check` verified timeout, deadline, retry, and circuit-breaker settings were exposed and wired into the running server | 4 |
 | 11 | Testing and Production | Protocol and application testing | Not Started | Automated tests and MCP Inspector report | — | — |
 | 12 | Testing and Production | Model and tool-selection evaluation | Not Started | Measurable evaluation report | — | — |
 | 13 | Testing and Production | Observability and scaling | Not Started | Observable production candidate | — | — |
@@ -100,7 +100,7 @@
 - Results: Formal Day 6 completion verification passed on 2026-08-25 with `pytest`, successful `discover`, and a successful approved `create_reading_list` client call
 - Results: Learner can explain the Day 6 protocol nuance that `discover` must stay separate from the initialized request flow in this local setup
 - Problems encountered: The first client version called `initialize()` before `discover()`, which caused a protocol-level error on the local connection; the flow was corrected by keeping `discover` separate from initialized operations
-- Decisions made: Keep the Day 6 client on local stdio; use a small explicit write-tool approval policy until richer server-side annotations exist; keep the packaged implementation under `src/` and leave `client/cli.py` as a thin entry point
+- Decisions made: Keep the Day 6 client on local stdio; use a small explicit write-tool policy until richer server-side annotations exist; keep the packaged implementation under `src/` and leave `client/cli.py` as a thin entry point
 - Topics to revisit: Multiple-server isolation, lazy loading, and whether later server metadata should replace the local write-tool policy table
 - Next action: Begin Day 7 by adding Streamable HTTP transport and preparing for remote-style verification
 
@@ -125,7 +125,7 @@
 - Work implemented: Completed Day 7 deployment verification against the public Render endpoint at `https://researchops-mcp.onrender.com/mcp`
 - Tests executed: `pytest`; `python client/cli.py --connection-mode http --server-url https://researchops-mcp.onrender.com/mcp discover`; `python client/cli.py --connection-mode http --server-url https://researchops-mcp.onrender.com/mcp list-tools`; `python client/cli.py --connection-mode http --server-url https://researchops-mcp.onrender.com/mcp call-tool health_check`; `python client/cli.py --connection-mode http --server-url https://researchops-mcp.onrender.com/mcp call-tool search_papers --arg "query=Model Context Protocol" --arg "limit=2"`
 - Results: Remote discovery returned server `researchops-mcp`, version `0.5.0`, and protocol `2026-07-28`; remote tool listing exposed the expected 9 tools with schemas and read/write boundaries
-- Results: Remote `health_check` confirmed OpenAlex plus SQLite with staging database path `/tmp/researchops.db`; remote `search_papers` returned live OpenAlex results through the deployed MCP server
+- Results: Remote `health_check` confirmed OpenAlex plus SQLite with staging database path `/tmp/researchops.db`; remote `search_papers` returned live upstream OpenAlex results through the deployed MCP server
 - Problems encountered: Early retries intermittently returned `Not Found` before later succeeding, consistent with free Render cold-start or routing wake-up behavior rather than a persistent MCP routing defect
 - Decisions made: Accept temporary `/tmp/researchops.db` storage for Day 7 staging only and carry persistent remote storage as a later production concern
 - Topics to revisit: Supported AI host connection and persistent remote database strategy after authentication work begins
@@ -178,3 +178,27 @@
 - Decisions made: Keep Day 9 hardening lightweight and in-process for now instead of introducing Redis, a WAF, or an external API gateway before the roadmap requires them
 - Topics to revisit: Replace in-memory rate limiting with a distributed limiter for multi-instance production deployment and improve CLI surfacing of raw HTTP 429 responses
 - Next action: Begin Day 10 by making dependency failures, retries, and degradation paths predictable
+
+### 2026-08-31 Day 10 Kickoff
+
+- Topics studied: Day 10 kickoff; timeout budgets, retries, backoff with jitter, circuit breakers, caching, graceful degradation, and dependency-failure testing
+- Work implemented: Reviewed the roadmap, tracker, Day 9 code, and current dependency boundaries before starting reliability work
+- Tests executed: None yet for Day 10
+- Results: Confirmed the earliest incomplete milestone is Day 10 reliability engineering
+- Problems encountered: None
+- Decisions made: Start Day 10 from the existing OpenAlex dependency path and persistent library workflows instead of introducing new product features
+- Topics to revisit: Which operations are safe to retry automatically and where caching should live
+- Next action: Teach Day 10 reliability concepts, validate understanding, then implement the first resilience slice
+
+### 2026-09-01 Day 10 Closeout
+
+- Topics studied: timeout budgets, deadline budgets, retries with backoff and jitter, circuit breakers, cached fallback, and graceful degradation
+- Work implemented: Added timeout, retry, deadline, and circuit-breaker behavior to the OpenAlex client; added SQLite cached-paper reads and writes; added stale-cache fallback for stable-ID paper retrieval; exposed reliability settings through server flags and `health_check`
+- Tests executed: `pytest tests/unit/test_openalex_service.py`; `pytest`; `python src/server.py --help`; `python client/cli.py call-tool health_check`
+- Results: 9 dedicated Day 10 reliability tests passed and the full suite passed with 44 tests; targeted tests verified retry success, circuit-breaker opening, cached stale-paper fallback, and hard failure when no cache exists
+- Results: Manual verification on 2026-09-01 confirmed the new reliability flags are exposed by `python src/server.py --help` and the running server reports the configured timeout, deadline, retry, and breaker settings through `health_check`
+- Results: Learner can explain why `get_paper` is a safer cache candidate than `search_papers`, why a circuit breaker should fail fast after repeated upstream failure, and why writes should not be retried casually
+- Problems encountered: No Inspector-visible fault-injection path exists yet for forcing OpenAlex failures manually; reliability evidence is currently strongest in automated tests plus `health_check` runtime verification
+- Decisions made: Limit automatic retry and cached fallback to safe OpenAlex read paths rather than applying the same policy to writes or query-search result caching
+- Topics to revisit: Whether later evaluation or observability work should add explicit stale-response metrics and a manual failure simulator
+- Next action: Begin Day 11 protocol and application testing

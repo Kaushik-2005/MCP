@@ -334,3 +334,119 @@ Manual CLI verification on August 29, 2026 confirmed:
 - the outbound allowlist is domain-based and intentionally simple
 - the CLI still reports some HTTP rejections as generic transport errors
 - the server does not yet use a centralized audit viewer or external SIEM pipeline
+
+## Day 10: Reliability and Graceful Degradation
+
+### What Changed
+
+Day 10 hardened the OpenAlex dependency path so the server behaves predictably during transient failures, repeated failures, and upstream unavailability.
+
+### Reliability Boundary Placement
+
+#### Upstream Client Layer
+
+`OpenAlexClient` now owns the dependency-facing resilience behavior:
+
+- per-attempt timeout budget
+- total deadline budget
+- retry attempts
+- exponential backoff with jitter
+- circuit-breaker state
+
+This logic belongs at the upstream client boundary because that is where dependency failures actually happen.
+
+#### Repository Layer
+
+The SQLite repository now exposes persistent paper-cache operations:
+
+- `cache_paper(...)`
+- `get_cached_paper(...)`
+
+This keeps cache storage in the same layer that already owns durable paper records.
+
+#### Service Layer
+
+`PaperService` now owns fallback policy:
+
+- successful reads refresh cached paper metadata
+- `get_paper` can return cached metadata with `cache_status=stale` when OpenAlex is down
+- `search_papers` still fails if the dependency is unavailable and no explicit safe fallback exists
+
+This is a business-level decision because the service decides when stale data is acceptable.
+
+### Request Flow: Resilient `get_paper`
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant MCP as MCP Tool or Resource Handler
+    participant Service as Paper Service
+    participant OA as OpenAlex Client
+    participant Repo as SQLite Repository
+
+    Client->>MCP: get_paper(paper_id)
+    MCP->>Service: get_paper(paper_id)
+    Service->>OA: get_work(paper_id)
+    OA->>OA: enforce timeout, retries, deadline, breaker
+    alt upstream success
+        OA-->>Service: live paper metadata
+        Service->>Repo: cache_paper(...)
+        Service-->>MCP: live paper + cache_status=live
+    else upstream dependency failure
+        Service->>Repo: get_cached_paper(paper_id)
+        alt cached paper exists
+            Repo-->>Service: cached paper
+            Service-->>MCP: stale paper + cached_at + dependency_warning
+        else no cache
+            Service-->>MCP: dependency error
+        end
+    end
+```
+
+### Request Flow: Circuit Breaker
+
+```mermaid
+sequenceDiagram
+    participant Request1
+    participant OA as OpenAlex Client
+    participant Breaker as Circuit Breaker
+
+    Request1->>OA: dependency call
+    OA->>Breaker: before_request()
+    Breaker-->>OA: closed
+    OA-->>Request1: dependency failure
+    OA->>Breaker: record_failure()
+
+    Request1->>OA: dependency call again later
+    OA->>Breaker: before_request()
+    Breaker-->>OA: open after threshold
+    OA-->>Request1: fail fast without upstream call
+```
+
+### Reliability Semantics
+
+- Safe automatic retries are limited to upstream read operations.
+- Write tools still rely on idempotency and should not be retried casually by the server.
+- Live and stale paper responses keep the same MCP shape as much as possible, with explicit cache metadata added only when relevant.
+- Search results are not automatically served from cache because stale query ranking is harder to interpret safely.
+
+### Verification Added In Day 10
+
+Automated tests now cover:
+
+- transient dependency failure followed by successful retry
+- circuit-breaker opening after repeated failures
+- cached stale-paper fallback when OpenAlex is unavailable
+- hard dependency failure when no cached paper exists
+
+Manual verification on September 1, 2026 confirmed:
+
+- `python src/server.py --help` lists the new reliability flags
+- `python client/cli.py call-tool health_check` returns the configured timeout, deadline, retry, and breaker settings
+
+### Known Limitations After Day 10
+
+- search-result caching is still intentionally absent
+- the circuit breaker is in-memory and therefore process-local
+- cached fallback currently applies to stable-ID paper retrieval, not broader search workflows
+- there is not yet a manual Inspector-visible failure simulator for forcing upstream faults on demand
