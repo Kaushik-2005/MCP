@@ -1,5 +1,6 @@
 from researchops_mcp.repositories.sqlite import SQLiteRepository
 from researchops_mcp.services.library import ConflictError, NotFoundError, ResearchLibraryService, ValidationError
+from researchops_mcp.services.openalex import OpenAlexClient, PaperService
 
 
 class FakePaperService:
@@ -16,6 +17,20 @@ class FakePaperService:
             "open_access": True,
             "cited_by_count": 0,
         }
+
+
+def make_work_payload(paper_id: str) -> dict[str, object]:
+    return {
+        "id": f"https://openalex.org/{paper_id}",
+        "title": f"Paper {paper_id}",
+        "authorships": [{"author": {"display_name": "Jane Doe"}}],
+        "publication_year": 2026,
+        "abstract_inverted_index": {"Research": [0], "Paper": [1]},
+        "primary_location": {"source": {"display_name": "Journal"}},
+        "open_access": {"is_oa": True},
+        "ids": {},
+        "cited_by_count": 0,
+    }
 
 
 def test_create_reading_list_is_idempotent(tmp_path) -> None:
@@ -115,3 +130,19 @@ def test_user_cannot_update_another_users_note(tmp_path) -> None:
         assert note["note_id"] in str(exc)
     else:
         raise AssertionError("Expected NotFoundError for cross-user note update")
+
+
+def test_ensure_demo_data_does_not_lock_database_when_paper_service_caches(tmp_path) -> None:
+    repository = SQLiteRepository(str(tmp_path / "researchops.db"))
+
+    def fetch_json(url: str, timeout: float) -> dict[str, object]:
+        paper_id = url.rsplit("/", 1)[-1].split("?", 1)[0]
+        return make_work_payload(paper_id)
+
+    paper_service = PaperService(OpenAlexClient(fetch_json=fetch_json, retry_attempts=0), paper_store=repository)
+    service = ResearchLibraryService(repository, paper_service)
+
+    service.ensure_demo_data()
+
+    reading_list = service.get_reading_list("starter-mcp")
+    assert len(reading_list["papers"]) == 2

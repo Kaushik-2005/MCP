@@ -67,6 +67,7 @@ class ResearchLibraryService:
 
     def _seed_demo_list(self, list_id: str, name: str, description: str, paper_ids: list[str]) -> None:
         now = utc_now()
+        papers = [self._paper_service.get_paper(paper_id) for paper_id in paper_ids]
         with self._repository.transaction() as conn:
             self._repository.ensure_user(conn, user_id=self._default_user_id, display_name="Local Learner")
             if not self._repository.has_reading_list(conn, list_id, user_id=self._default_user_id):
@@ -78,8 +79,7 @@ class ResearchLibraryService:
                     description=description,
                     created_at=now,
                 )
-            for paper_id in paper_ids:
-                paper = self._paper_service.get_paper(paper_id)
+            for paper in papers:
                 self._repository.save_paper(conn, paper, updated_at=now)
                 self._repository.add_paper_to_list(
                     conn,
