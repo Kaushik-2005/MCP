@@ -3,9 +3,9 @@
 ## Current Position
 
 - Current module: Module 5 - Testing, Evaluation, and Production
-- Current day: Day 11 - protocol and application testing
-- Current task: Day 10 completed; Day 11 not started yet
-- Next milestone: Begin automated protocol, contract, and negative testing
+- Current day: Day 12 - model and tool-selection evaluation
+- Current task: Day 11 completed; Day 12 not started yet
+- Next milestone: Begin model and tool-selection evaluation dataset design
 - Active blockers: None
 
 ## Roadmap Progress
@@ -20,9 +20,9 @@
 | 6 | Client and Remote Transport | Build an MCP client | Completed | Python CLI client for ResearchOps MCP | `pytest` passed with 18 tests; CLI verified discovery, tool listing, resource reads, tool-error handling, denied write approval, and approved write execution on 2026-08-25; learner explained why discovery stays separate from the initialized request flow | 5 |
 | 7 | Client and Remote Transport | Streamable HTTP and deployment | Completed | Remotely accessible staging MCP server | `pytest` passed with 24 tests; stdio and local HTTP both verified; Render deployment at `https://researchops-mcp.onrender.com/mcp` passed remote `discover`, `list-tools`, `health_check`, and `search_papers` on 2026-08-25; Inspector and CLI both validated the Streamable HTTP MCP surface | 5 |
 | 8 | Security and Reliability | Authentication and authorization | Completed | Authenticated multi-user remote server | `pytest` passed with 32 tests; dedicated Day 8 HTTP auth tests verified `401` for missing and invalid tokens and `403` for insufficient scope; manual local HTTP checks verified Bob cannot write notes with a read-only token and cannot read Alice's list | 4 |
-| 9 | Security and Reliability | MCP security | Completed | Security checklist, threat model, and adversarial tests | `pytest tests/unit/test_day9_security.py` passed with 8 tests and full `pytest` passed with 40 tests on 2026-08-29; manual HTTP checks verified untrusted-content warnings on `paper://W7129030749`, prompt hardening on `compare_papers`, ownership denial for Bob reading Alice's list, and rate limiting after repeated authenticated requests | 4 |
+| 9 | Security and Reliability | MCP security | Completed | Security checklist, threat model, and adversarial tests | `pytest tests/unit/test_security_controls.py` passed with 8 tests and full `pytest` passed with 40 tests on 2026-08-29; manual HTTP checks verified untrusted-content warnings on `paper://W7129030749`, prompt hardening on `compare_papers`, ownership denial for Bob reading Alice's list, and rate limiting after repeated authenticated requests | 4 |
 | 10 | Security and Reliability | Reliability engineering | Completed | Predictable behavior during dependency failures | `pytest tests/unit/test_openalex_service.py` passed with 9 tests and full `pytest` passed with 44 tests on 2026-09-01; `python src/server.py --help` and `python client/cli.py call-tool health_check` verified timeout, deadline, retry, and circuit-breaker settings were exposed and wired into the running server | 4 |
-| 11 | Testing and Production | Protocol and application testing | Not Started | Automated tests and MCP Inspector report | — | — |
+| 11 | Testing and Production | Protocol and application testing | Completed | Automated tests and MCP Inspector report | `pytest tests/integration/test_protocol_workflows.py tests/unit/test_mcp_metadata_regression.py` passed with 6 tests; full `pytest` passed with 51 tests on 2026-09-02; `npx @modelcontextprotocol/inspector@latest --cli python src/server.py --method tools/list --format json` listed the expected 9-tool catalog | 4 |
 | 12 | Testing and Production | Model and tool-selection evaluation | Not Started | Measurable evaluation report | — | — |
 | 13 | Testing and Production | Observability and scaling | Not Started | Observable production candidate | — | — |
 | 14 | Testing and Production | Advanced features and final release | Not Started | Portfolio-ready MCP project | — | — |
@@ -147,7 +147,7 @@
 - Topics studied: Authentication versus authorization, OAuth 2.1 roles, PKCE, protected resource metadata, resource indicators, scopes, and tenant ownership enforcement
 - Work implemented: Added Day 8 auth helpers, demo bearer-token verification, per-scope enforcement, HTTP auth configuration, and user-aware list and note ownership checks through the service and repository layers
 - Work implemented: Extended the CLI to send bearer tokens for HTTP transport and added dedicated Day 8 auth tests for `401` and `403` behavior
-- Tests executed: `pytest tests/unit/test_day8_auth.py`; `pytest`; local HTTP CLI checks with `researchops-bob-read`, `researchops-alice-read`, `researchops-alice-full`, and no token
+- Tests executed: `pytest tests/unit/test_http_auth.py`; `pytest`; local HTTP CLI checks with `researchops-bob-read`, `researchops-alice-read`, `researchops-alice-full`, and no token
 - Results: 32 tests passed; missing or invalid bearer tokens return `401`; insufficient write scope returns `403`; cross-user list access is blocked; authenticated owners can still read and write their own data
 - Results: Learner can explain authentication versus authorization, `401` versus `403`, and why scope alone is not enough without ownership checks
 - Problems encountered: The CLI currently summarizes some raw HTTP auth failures as generic transport errors instead of always surfacing the exact HTTP status cleanly
@@ -170,7 +170,7 @@
 
 - Topics studied: prompt injection, tool poisoning, confused deputy, outbound allowlists, request-size limits, rate limiting, logging hygiene, and trust labeling for model-facing content
 - Work implemented: Added `security.py` with outbound-domain checks, request-size middleware, rate limiting middleware, and log redaction helpers; tightened OpenAlex, prompt, resource, and note validation; added untrusted-content warnings to paper and reading-list resources and prompt templates; fixed HTTP startup to mount the ASGI app with custom middleware via `uvicorn`
-- Tests executed: `pytest tests/unit/test_day9_security.py`; `pytest`; manual HTTP CLI checks against `http://127.0.0.1:8012/mcp` for `read-resource paper://W7129030749`, `get-prompt compare_papers`, repeated `discover` calls with a short rate-limit window, and prior Day 8 ownership and scope checks under auth
+- Tests executed: `pytest tests/unit/test_security_controls.py`; `pytest`; manual HTTP CLI checks against `http://127.0.0.1:8012/mcp` for `read-resource paper://W7129030749`, `get-prompt compare_papers`, repeated `discover` calls with a short rate-limit window, and prior Day 8 ownership and scope checks under auth
 - Results: 8 dedicated Day 9 security tests passed and the full suite passed with 40 tests; paper resources now mark external metadata as untrusted, prompt templates add an explicit security note, oversize input is rejected, and non-OpenAlex outbound targets are blocked
 - Results: Manual verification confirmed `paper://W7129030749` includes `content_trust=untrusted_external_data` and a `security_warning`; `compare_papers` preserved the hostile focus string as data while warning not to follow untrusted content as instructions; repeated authenticated requests hit the configured rate limit and were rejected at the HTTP layer
 - Results: Learner can explain why host approval is not enough, how ownership and scope differ, why rate limiting is about abuse control rather than identity, and why paper metadata and notes must be treated as untrusted content
@@ -202,3 +202,17 @@
 - Decisions made: Limit automatic retry and cached fallback to safe OpenAlex read paths rather than applying the same policy to writes or query-search result caching
 - Topics to revisit: Whether later evaluation or observability work should add explicit stale-response metrics and a manual failure simulator
 - Next action: Begin Day 11 protocol and application testing
+
+
+### 2026-09-02 Day 11 Closeout
+
+- Topics studied: unit versus integration versus contract testing, metadata regression, MCP-shaped error handling, external API mocking, and Inspector-based verification
+- Work implemented: Added `tests/integration/test_protocol_workflows.py` for end-to-end MCP workflow and error-result coverage; added `tests/unit/test_mcp_metadata_regression.py` to freeze the discovered tool, prompt, and resource-template contract
+- Tests executed: `pytest tests/integration/test_protocol_workflows.py tests/unit/test_mcp_metadata_regression.py`; `pytest`; `npx @modelcontextprotocol/inspector@latest --cli python src/server.py --method tools/list --format json`
+- Results: The new Day 11 suite passed with 6 tests and the full suite passed with 51 tests on 2026-09-02; integration coverage now verifies successful tool flows, resource updates after writes, prompt rendering, and MCP-shaped HTTP error results
+- Results: Inspector CLI listed the expected 9 tools from the current local server, confirming the external MCP-visible contract still matches the automated metadata regression checks
+- Results: Learner can explain why schema drift is a contract problem, why error-result shape matters in MCP, and why mocks are useful beyond speed or quota control
+- Problems encountered: `docs/session-handoff.md` was missing at session start; the first raw integration assertion assumed full note content in reading-list resources, but the actual contract intentionally exposes only `content_preview`; local Node is `v22.14.0`, below the Inspector docs recommendation of `22.19.0+`, so the latest Inspector emitted engine warnings even though CLI verification still succeeded
+- Decisions made: Keep Day 11 metadata regression focused on contract-critical fields rather than freezing every byte of every MCP response
+- Topics to revisit: Whether to add broader compatibility checks across future SDK or protocol-version changes once Day 12 evaluation work begins
+- Next action: Begin Day 12 by defining the evaluation dataset, expected tool behaviors, and quality thresholds

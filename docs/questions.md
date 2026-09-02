@@ -59,3 +59,14 @@
 - Correct explanation: The circuit breaker remembers repeated dependency failure across requests and fails fast for a reset window. That protects latency, upstream quota, and server resources instead of letting each new request repeat the same expensive failure cycle.
 - Revisit on: Day 12
 - Status: Understood
+
+
+## Question
+
+- Date: 2026-09-02
+- Related day: Day 11
+- Question: Why is a breaking `tools/list` schema change primarily a contract regression problem rather than only a negative-test problem?
+- Current understanding: MCP tool schemas and descriptions directly affect model behavior.
+- Correct explanation: In MCP, tool schemas, descriptions, and discovery metadata are part of the interface contract. A breaking schema change can disrupt client behavior and model tool selection even if the underlying business logic still works, so it should be caught by contract regression tests rather than only by generic negative-path tests.
+- Revisit on: Day 13
+- Status: Understood

@@ -1406,6 +1406,150 @@ Reliability engineering in MCP means the server stays predictable when dependenc
 
 ### Day 11: Protocol and Application Testing
 
+#### Learning objectives
+
+- Distinguish unit, contract, integration, and negative testing in an MCP project.
+- Understand why metadata regression matters because MCP schemas and descriptions are part of the model-facing interface.
+- Learn how to verify both successful tool flows and correct MCP-shaped failure behavior.
+- Understand why external API mocking is still necessary even when a real upstream integration exists.
+- Learn how MCP Inspector complements, but does not replace, automated tests.
+
+#### Core concepts
+
+- Unit tests verify one layer in isolation, such as a service or repository rule.
+- Contract tests verify the discovered MCP interface shape, including tool names, argument schemas, prompt arguments, and resource templates.
+- Integration tests verify that a real MCP client can exercise the server end to end across tools, resources, prompts, and writes.
+- Negative tests verify safe failure behavior for invalid input, unknown tools, auth failure, and dependency failure.
+- Metadata regression tests matter in MCP because tool descriptions and schemas influence both client behavior and model tool selection.
+- External API mocking is useful not only for speed and quota control, but also for deterministic reproduction of timeouts, malformed payloads, and other hard-to-force failures.
+- MCP Inspector is a reference testing client, but passing Inspector alone is not enough to prove application correctness.
+
+#### How it works
+
+1. The Day 11 suite adds a dedicated integration layer under `tests/integration/` for real MCP workflows.
+2. A fake paper service keeps Day 11 protocol tests deterministic while preserving the real MCP surface.
+3. The workflow test exercises `search_papers`, `create_reading_list`, `add_paper_to_list`, `add_note`, `update_note`, `read_resource`, `get_prompt`, and `delete_note` through an MCP client.
+4. Dedicated metadata regression tests freeze the discovered tool catalog, prompt catalog, and resource-template catalog.
+5. Raw HTTP protocol checks verify that tool failures still come back in valid MCP result shape with `isError: true` rather than arbitrary app behavior.
+6. Inspector CLI verification confirms that an external MCP testing client can still list the current tool contract.
+
+#### Example
+
+Integration-flow example:
+
+- Create a reading list through `create_reading_list`.
+- Add a paper and note through MCP tool calls.
+- Read `reading-list://{list_id}` and verify the resource reflects the write operations.
+- Render `compare_papers` and verify prompt output still includes the expected security warning.
+- Delete the note and confirm the resource view updates accordingly.
+
+Contract-regression example:
+
+- `search_papers` must still require `query`.
+- `create_reading_list` must still require `name` and `idempotency_key`.
+- `delete_note` must still require `note_id`, `expected_version`, `confirm`, and `idempotency_key`.
+- `paper://{paper_id}` and `reading-list://{list_id}` must still be advertised as resource templates.
+
+#### Role in our project
+
+Day 11 turns the existing ResearchOps implementation into a more defensible MCP application by testing the protocol surface directly rather than relying only on service-level tests.
+
+In ResearchOps, Day 11 adds:
+
+- end-to-end MCP workflow coverage across read and write paths
+- metadata regression checks for tools, prompts, and resources
+- raw HTTP checks for MCP-shaped tool error results
+- current Inspector CLI evidence for the advertised tool contract
+
+#### Why it is designed this way
+
+- Contract tests belong near the discovered MCP surface because schema drift is an interface regression.
+- Integration tests use a fake paper service so failures stay deterministic and do not depend on live OpenAlex behavior.
+- Negative protocol tests stay close to the HTTP app because they verify wire-visible behavior rather than only service exceptions.
+- Existing unit tests remain valuable; Day 11 adds broader confidence instead of replacing earlier layers.
+
+#### Alternatives and trade-offs
+
+- Only unit tests:
+  - faster
+  - misses MCP surface regressions and protocol-shape failures
+- Only Inspector testing:
+  - useful for manual exploration
+  - weak as repeatable regression evidence by itself
+- Live upstream integration in every test:
+  - realistic
+  - flaky, slower, and harder to reproduce precisely
+- Snapshot every full JSON response blindly:
+  - broad coverage
+  - brittle if it freezes irrelevant formatting details instead of contract-critical fields
+
+#### Failure modes
+
+- A tool schema can drift while service logic still passes unit tests.
+- A write flow can work internally but fail to update a resource representation correctly.
+- A prompt can lose a security warning without breaking ordinary string-generation tests elsewhere.
+- HTTP handlers can return the wrong protocol shape even when application logic raises the correct error.
+- Inspector can pass one manual check while a contract regression remains untested in automation.
+
+#### Common mistakes
+
+- Treating a listed tool as sufficient proof that the tool is production-ready.
+- Assuming negative tests are the same thing as contract tests.
+- Using live APIs for every test and then accepting flakiness as normal.
+- Freezing too much output detail in regression tests instead of the meaningful interface contract.
+- Testing only successful MCP flows and ignoring protocol-shaped failure behavior.
+
+#### Security considerations
+
+- Contract tests help catch accidental scope, schema, or prompt-safety drift that could weaken earlier Day 8 and Day 9 controls.
+- Resource regression tests help ensure we do not accidentally expand exposed note content beyond the intended `content_preview` boundary.
+- Negative protocol tests reduce the risk of clients mis-handling failures due to inconsistent response shape.
+- Mocked dependency failures let us test dangerous conditions without abusing real upstream systems.
+
+#### Interview explanation
+
+Protocol and application testing in MCP requires more than calling one tool successfully. You need unit tests for business logic, contract tests for the model-facing metadata surface, integration tests for real MCP workflows, and negative tests for safe failure behavior. In ResearchOps Day 11, we added deterministic end-to-end MCP workflow tests, metadata regression tests for tools, prompts, and resources, and Inspector CLI verification so the server contract is checked both automatically and from an external MCP client.
+
+#### Questions for revision
+
+1. Why is a schema change in `tools/list` primarily a contract regression problem rather than only a negative-test problem?
+   Answer: Because the schema itself is part of the MCP interface contract. A client or model may break even if the underlying business logic still works.
+
+2. Why do Day 11 integration tests use a fake paper service instead of always calling OpenAlex?
+   Answer: To keep protocol tests deterministic and to force known behavior without depending on live network latency, quotas, or upstream data drift.
+
+3. Why is checking MCP error-result shape important in addition to testing successful tool calls?
+   Answer: MCP clients depend on consistent protocol-shaped failure responses to interpret errors, surface them correctly, and avoid confusing transport failures with tool failures.
+
+4. Why do metadata regression tests matter more in MCP than in many ordinary internal APIs?
+   Answer: Because tool names, descriptions, and schemas directly influence how clients and models discover and choose capabilities.
+
+5. What did the September 2, 2026 Inspector CLI verification prove?
+   Answer: It proved that an external MCP testing client could still connect to the current local server and list the full current tool catalog, even though the local Node runtime emitted engine warnings for the latest Inspector version.
+
+#### Active recall review
+
+1. Question: What is the difference between a unit test and an MCP integration test in this project?
+   Answer: A unit test isolates one layer such as the OpenAlex or library service, while an MCP integration test verifies end-to-end behavior through the MCP client and server surface.
+
+2. Question: Why do metadata regression tests matter in MCP?
+   Answer: Because MCP metadata is not just documentation; it is part of the operational interface that clients and models use for discovery and tool selection.
+
+3. Question: Why is testing the error-result shape important, not just testing that the full flow runs?
+   Answer: Because MCP servers must fail in the correct protocol shape so clients can interpret tool failures consistently instead of treating them as arbitrary transport or application problems.
+
+4. Question: Why is external API mocking still important when the project already has a real OpenAlex integration?
+   Answer: Because mocks make failures reproducible and deterministic, including timeouts and malformed responses that are difficult or unsafe to force reliably against a real dependency.
+
+#### References
+
+- MCP specification latest: https://modelcontextprotocol.io/specification/latest
+- MCP 2026-07-28 release overview: https://blog.modelcontextprotocol.io/posts/2026-07-28/
+- MCP Inspector docs: https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/docs/2026-07-28/tools/inspector.mdx
+- MCP Inspector repository: https://github.com/modelcontextprotocol/inspector
+- OpenAI MCP guide: https://developers.openai.com/api/docs/guides/tools-connectors-mcp
+- Pytest documentation: https://docs.pytest.org/
+
 ### Day 12: Model and Tool-Selection Evaluation
 
 ### Day 13: Observability and Scaling

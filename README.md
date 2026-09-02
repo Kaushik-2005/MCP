@@ -4,7 +4,7 @@ ResearchOps MCP is a learning project for building a production-style Model Cont
 
 ## Current Status
 
-The project is in Day 10 of the roadmap as of September 1, 2026. The server supports local `stdio`, Streamable HTTP, Render staging deployment, authenticated multi-user access, security hardening, and reliability controls for timeout budgets, retries, circuit breaking, and cached paper fallback.
+The project is in Day 11 of the roadmap as of September 2, 2026. The server supports local `stdio`, Streamable HTTP, Render staging deployment, authenticated multi-user access, security hardening, reliability controls for timeout budgets, retries, circuit breaking, and cached paper fallback, plus Day 11 protocol workflow and metadata regression testing.
 
 ## Planned Capabilities
 
@@ -153,10 +153,57 @@ What to verify:
 Run the dedicated Day 9 tests:
 
 ```powershell
-pytest tests/unit/test_day9_security.py
+pytest tests/unit/test_security_controls.py
 ```
 
-## Day 10 Reliability Testing`r`n`r`nVerify the new reliability settings are exposed:`r`n`r`n```powershell`r`npython src/server.py --help`r`npython client/cli.py call-tool health_check`r`n``` `r`n`r`nRun the dedicated Day 10 reliability tests:`r`n`r`n```powershell`r`npytest tests/unit/test_openalex_service.py`r`n``` `r`n`r`nWhat Day 10 now guarantees:`r`n`r`n- safe upstream read retries use backoff and jitter`r`n- repeated OpenAlex failures open a circuit breaker and fail fast`r`n- stable-ID paper retrieval can fall back to cached metadata with stale markers`r`n- no cached paper means the dependency error is surfaced instead of guessing data`r`n`r`n## Docker
+## Day 10 Reliability Testing
+
+Verify the new reliability settings are exposed:
+
+```powershell
+python src/server.py --help
+python client/cli.py call-tool health_check
+``` 
+
+Run the dedicated Day 10 reliability tests:
+
+```powershell
+pytest tests/unit/test_openalex_service.py
+``` 
+
+What Day 10 now guarantees:
+
+- safe upstream read retries use backoff and jitter
+- repeated OpenAlex failures open a circuit breaker and fail fast
+- stable-ID paper retrieval can fall back to cached metadata with stale markers
+- no cached paper means the dependency error is surfaced instead of guessing data
+
+## Day 11 Testing
+
+Run the dedicated Day 11 protocol and contract tests:
+
+```powershell
+pytest tests/integration/test_protocol_workflows.py tests/unit/test_mcp_metadata_regression.py
+```
+
+Run MCP Inspector CLI against the local server:
+
+```powershell
+npx @modelcontextprotocol/inspector@latest --cli python src/server.py --method tools/list --format json
+```
+
+What Day 11 now verifies:
+
+- end-to-end MCP workflows across tools, resources, prompts, and write flows
+- metadata regression for tool, prompt, and resource-template catalogs
+- MCP-shaped tool error results over HTTP
+- external Inspector visibility of the current tool contract
+
+Current limitation:
+
+- the local Node runtime is `v22.14.0`, while current Inspector docs recommend `22.19.0+`, so Inspector may emit engine warnings even when the CLI verification succeeds
+
+## Docker
 
 Build the container image:
 

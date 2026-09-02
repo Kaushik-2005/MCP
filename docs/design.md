@@ -24,6 +24,7 @@ The latest completed day appears at the end.
 - Repository layer: SQLite schema, transactions, and durable reads and writes.
 - External dependency layer: OpenAlex-backed paper lookup and search.
 - Security layer: HTTP middleware, outbound controls, trust labeling, and validation limits.
+- Verification layer: automated MCP workflow, contract, and regression tests.
 
 ### File Ownership
 
@@ -35,6 +36,8 @@ The latest completed day appears at the end.
 - `src/researchops_mcp/repositories/sqlite.py`: SQLite persistence and transaction boundary.
 - `src/researchops_mcp/client_cli.py`: packaged CLI client implementation.
 - `client/cli.py`: thin roadmap-friendly client entry point.
+- `tests/integration/test_protocol_workflows.py`: end-to-end MCP workflow and protocol-shape verification.
+- `tests/unit/test_mcp_metadata_regression.py`: MCP catalog and schema regression checks.
 
 ### Current Capability Map
 
@@ -450,3 +453,75 @@ Manual verification on September 1, 2026 confirmed:
 - the circuit breaker is in-memory and therefore process-local
 - cached fallback currently applies to stable-ID paper retrieval, not broader search workflows
 - there is not yet a manual Inspector-visible failure simulator for forcing upstream faults on demand
+
+
+## Day 11: Protocol Testing and Contract Regression
+
+### What Changed
+
+Day 11 did not change the runtime MCP surface itself. It added a stronger verification layer around that surface so protocol behavior, schema shape, and post-write resource behavior are regression-tested.
+
+### Verification Boundary Placement
+
+#### Integration Layer
+
+`tests/integration/test_protocol_workflows.py` now verifies end-to-end MCP behavior through a real MCP client.
+It covers:
+
+- successful tool workflows
+- resource reads after write operations
+- prompt rendering after state changes
+- MCP-shaped HTTP tool error results
+
+This belongs in an integration layer because it checks the contract as a client sees it, not only isolated business logic.
+
+#### Contract Regression Layer
+
+`tests/unit/test_mcp_metadata_regression.py` freezes contract-critical discovery details:
+
+- tool names and order
+- required arguments
+- default argument values
+- prompt argument shapes
+- resource-template identity and MIME types
+
+This belongs near the MCP discovery surface because schema and metadata drift are interface regressions even when internal logic still passes.
+
+### Request Flow: Day 11 Workflow Verification
+
+```mermaid
+sequenceDiagram
+    participant Test as Integration Test
+    participant Client as MCP Client
+    participant MCP as ResearchOps MCP Server
+    participant Library as Library Service
+    participant Context as Resource/Prompt Helpers
+
+    Test->>Client: call search_papers
+    Client->>MCP: tools/call search_papers
+    MCP-->>Client: paper results
+    Test->>Client: call create_reading_list/add_paper_to_list/add_note/update_note
+    Client->>MCP: write tool calls
+    MCP->>Library: persist state changes
+    Library-->>MCP: durable results
+    Test->>Client: read reading-list resource
+    Client->>MCP: resources/read reading-list://{list_id}
+    MCP->>Context: build reading-list document
+    Context-->>Client: resource with paper and note previews
+    Test->>Client: get compare_papers prompt
+    Client->>MCP: prompts/get compare_papers
+    MCP->>Context: build prompt with security warning
+    Context-->>Client: prompt text
+```
+
+### Design Implications
+
+- The project now has a distinct verification layer in addition to transport, service, repository, and security layers.
+- Reading-list resources intentionally expose `content_preview` rather than full note bodies, and Day 11 regression checks now protect that boundary.
+- Inspector CLI verification is useful as an external MCP-visible check, but the authoritative regression safety net remains the automated local test suite.
+
+### Known Limitations After Day 11
+
+- `docs/session-handoff.md` is still missing from the repository.
+- Current Inspector CLI runs under local Node `v22.14.0` with engine warnings because the latest Inspector recommends `22.19.0+`.
+- The current metadata regression tests freeze contract-critical fields, not every possible response detail.
