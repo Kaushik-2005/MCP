@@ -24,7 +24,7 @@ The latest completed day appears at the end.
 - Repository layer: SQLite schema, transactions, and durable reads and writes.
 - External dependency layer: OpenAlex-backed paper lookup and search.
 - Security layer: HTTP middleware, outbound controls, trust labeling, and validation limits.
-- Verification layer: automated MCP workflow, contract, and regression tests.
+- Verification layer: automated MCP workflow, contract, regression, and evaluation tests.
 
 ### File Ownership
 
@@ -38,6 +38,9 @@ The latest completed day appears at the end.
 - `client/cli.py`: thin roadmap-friendly client entry point.
 - `tests/integration/test_protocol_workflows.py`: end-to-end MCP workflow and protocol-shape verification.
 - `tests/unit/test_mcp_metadata_regression.py`: MCP catalog and schema regression checks.
+- `src/researchops_mcp/evals.py`: deterministic Day 12 evaluation runner and threshold gate.
+- `tests/unit/test_eval_runner.py`: evaluation-runner regression checks.
+- `tests/evals/researchops_eval_dataset.jsonl`: prompt evaluation dataset.
 
 ### Current Capability Map
 
@@ -525,3 +528,83 @@ sequenceDiagram
 - `docs/session-handoff.md` is still missing from the repository.
 - Current Inspector CLI runs under local Node `v22.14.0` with engine warnings because the latest Inspector recommends `22.19.0+`.
 - The current metadata regression tests freeze contract-critical fields, not every possible response detail.
+
+## Day 12: Deterministic Evaluation And Metadata Quality
+
+### What Changed
+
+Day 12 added a dedicated evaluation layer that measures whether the model-facing MCP interface still drives correct capability selection, argument extraction, refusal behavior, and latency.
+
+### Evaluation Boundary Placement
+
+#### Evaluation Runner
+
+`src/researchops_mcp/evals.py` now owns the Day 12 evaluation workflow.
+It:
+
+- loads the JSONL prompt dataset
+- plans capability selection against the real ResearchOps MCP surface
+- executes the selected capability through an in-process MCP client
+- records metrics and latencies
+- compares the current metadata against a degraded metadata variant
+- enforces threshold checks for the current metadata variant
+
+This belongs in a separate evaluation layer because it is neither application business logic nor pure unit testing.
+
+#### Dataset Layer
+
+`tests/evals/researchops_eval_dataset.jsonl` captures prompt-level expectations for:
+
+- direct tool requests
+- indirect tool requests
+- resource and prompt retrieval
+- no-tool requests
+- ambiguous prompts
+- workflow first-step prompts
+- unauthorized actions
+- prompt-injection attempts
+- dependency-failure scenarios
+
+The dataset is intentionally deterministic and uses stable paper IDs and list identifiers so regressions are easier to interpret.
+
+#### Regression Workflow
+
+`.github/workflows/evals.yml` now runs:
+
+- `pytest tests/unit/test_eval_runner.py`
+- `python -m researchops_mcp.evals --fail-on-thresholds`
+
+This is intentionally narrow for Day 12. Day 13 can broaden CI into a fuller production pipeline.
+
+### Request Flow: Day 12 Evaluation Run
+
+```mermaid
+sequenceDiagram
+    participant CI as Local Run or CI
+    participant Eval as evals.py
+    participant Client as MCP Client
+    participant MCP as ResearchOps MCP Server
+
+    CI->>Eval: run dataset evaluation
+    Eval->>Eval: load JSONL cases and expected outcomes
+    Eval->>Eval: plan capability for current metadata
+    Eval->>Client: execute capability through in-process client
+    Client->>MCP: tools/call, resources/read, or prompts/get
+    MCP-->>Client: structured MCP result
+    Client-->>Eval: execution result and latency
+    Eval->>Eval: compute metrics and threshold status
+    Eval->>Eval: repeat with degraded metadata variant
+    Eval-->>CI: JSON report and pass/fail exit code
+```
+
+### Design Implications
+
+- ResearchOps now treats MCP metadata quality as a testable production concern.
+- The project has a deterministic way to catch regressions where tool descriptions become too vague even if the backend code still works.
+- Evaluation now complements unit, integration, contract, and security testing rather than replacing them.
+
+### Known Limitations After Day 12
+
+- The current harness is deterministic and heuristic, not a live model benchmark.
+- Result-grounding accuracy and cost-per-task are not yet measured.
+- The GitHub Actions workflow only covers the Day 12 regression slice; broader CI remains Day 13 work.

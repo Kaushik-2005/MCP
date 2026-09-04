@@ -163,3 +163,17 @@
 - Why: This improves resilience where the semantics are safe and clear, while avoiding accidental duplication of writes or misleading automatic fallback for query-based search results.
 - Trade-offs: Search remains dependency-sensitive, the breaker is still process-local, and stale cached paper metadata may lag the upstream source.
 - Consequences: ResearchOps now behaves predictably under transient upstream failure without changing the MCP interface contract, and later phases can extend reliability to broader caching or shared breaker state if justified.
+
+## Decision: Keep Day 12 Evaluation Deterministic And Metadata-Focused
+
+- Date: 2026-09-04
+- Status: Accepted
+- Context: Day 12 required a measurable evaluation report and regression gate, but fully model-backed evaluation would add cost, drift, and external variability before the project has observability and production CI in place.
+- Options considered:
+  - Use a live model-backed evaluation loop immediately
+  - Only record a static prompt list without execution or thresholds
+  - Build a deterministic local evaluation harness around the current MCP surface and compare it with degraded metadata
+- Decision: Build a deterministic local evaluation harness that executes the real MCP surface with a fake paper service, compares the current metadata against an intentionally flattened metadata variant, and enforces explicit thresholds for the current variant.
+- Why: This keeps the signal focused on MCP interface quality, makes results repeatable, and directly tests the claim that tool names and descriptions influence model-facing behavior.
+- Trade-offs: The harness is heuristic rather than a true live-model benchmark, and it does not yet measure result grounding or per-task token cost.
+- Consequences: ResearchOps now has a low-cost regression gate for metadata quality, and Day 13 or later can add broader observability or model-backed evaluation without replacing the deterministic baseline.

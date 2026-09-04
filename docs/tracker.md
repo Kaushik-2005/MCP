@@ -3,9 +3,9 @@
 ## Current Position
 
 - Current module: Module 5 - Testing, Evaluation, and Production
-- Current day: Day 12 - model and tool-selection evaluation
-- Current task: Day 11 completed; Day 12 not started yet
-- Next milestone: Begin model and tool-selection evaluation dataset design
+- Current day: Day 13 - observability and scaling
+- Current task: Day 12 evaluation harness, thresholds, report, and regression workflow completed
+- Next milestone: Begin observability and scaling design
 - Active blockers: None
 
 ## Roadmap Progress
@@ -23,7 +23,7 @@
 | 9 | Security and Reliability | MCP security | Completed | Security checklist, threat model, and adversarial tests | `pytest tests/unit/test_security_controls.py` passed with 8 tests and full `pytest` passed with 40 tests on 2026-08-29; manual HTTP checks verified untrusted-content warnings on `paper://W7129030749`, prompt hardening on `compare_papers`, ownership denial for Bob reading Alice's list, and rate limiting after repeated authenticated requests | 4 |
 | 10 | Security and Reliability | Reliability engineering | Completed | Predictable behavior during dependency failures | `pytest tests/unit/test_openalex_service.py` passed with 9 tests and full `pytest` passed with 44 tests on 2026-09-01; `python src/server.py --help` and `python client/cli.py call-tool health_check` verified timeout, deadline, retry, and circuit-breaker settings were exposed and wired into the running server | 4 |
 | 11 | Testing and Production | Protocol and application testing | Completed | Automated tests and MCP Inspector report | `pytest tests/integration/test_protocol_workflows.py tests/unit/test_mcp_metadata_regression.py` passed with 6 tests; full `pytest` passed with 51 tests on 2026-09-02; `npx @modelcontextprotocol/inspector@latest --cli python src/server.py --method tools/list --format json` listed the expected 9-tool catalog | 4 |
-| 12 | Testing and Production | Model and tool-selection evaluation | Not Started | Measurable evaluation report | — | — |
+| 12 | Testing and Production | Model and tool-selection evaluation | Completed | Deterministic evaluation harness, 42-case dataset, JSON and Markdown reports, and regression workflow | `pytest tests/unit/test_eval_runner.py` passed with 5 tests; `python -m researchops_mcp.evals --fail-on-thresholds` passed on 2026-09-04; `docs/evaluation-report.json` recorded current metadata thresholds passing and generic descriptions degrading tool selection | 4 |
 | 13 | Testing and Production | Observability and scaling | Not Started | Observable production candidate | — | — |
 | 14 | Testing and Production | Advanced features and final release | Not Started | Portfolio-ready MCP project | — | — |
 
@@ -216,3 +216,15 @@
 - Decisions made: Keep Day 11 metadata regression focused on contract-critical fields rather than freezing every byte of every MCP response
 - Topics to revisit: Whether to add broader compatibility checks across future SDK or protocol-version changes once Day 12 evaluation work begins
 - Next action: Begin Day 12 by defining the evaluation dataset, expected tool behaviors, and quality thresholds
+
+### 2026-09-04 Day 12 Closeout
+
+- Topics studied: tool-call precision and recall, argument correctness, task-completion rate, hallucinated-tool rate, unauthorized-action rate, latency percentiles, metadata quality thresholds, and evaluation regression design
+- Work implemented: Added `src/researchops_mcp/evals.py`, a 42-case JSONL evaluation dataset, focused Day 12 unit tests, machine-readable and human-readable evaluation reports, and a minimal GitHub Actions regression workflow for evals
+- Tests executed: `pytest tests/unit/test_eval_runner.py`; `python -m researchops_mcp.evals --fail-on-thresholds`
+- Results: 5 Day 12 unit tests passed on 2026-09-04; the current metadata variant passed all thresholds with precision 1.0, recall 1.0, argument correctness 0.971, exact match 1.0, unauthorized-action rate 0.0, and p95 latency 162 ms
+- Results: The generic-description variant performed materially worse, demonstrating that MCP tool names and descriptions are part of operational model behavior rather than only documentation
+- Problems encountered: The Windows sandbox helper was missing again, so verification and file updates required unsandboxed execution; the first eval-runner rewrite briefly introduced a regex quoting bug that was corrected before final verification
+- Decisions made: Keep Day 12 evaluation deterministic with a fake paper service and compare the current metadata against an intentionally degraded metadata variant
+- Topics to revisit: Whether later model-backed evaluation should supplement this deterministic harness with result-grounding and cost-per-task measurement
+- Next action: Begin Day 13 by adding observability primitives, request IDs, and per-tool telemetry

@@ -4,7 +4,7 @@ ResearchOps MCP is a learning project for building a production-style Model Cont
 
 ## Current Status
 
-The project is in Day 11 of the roadmap as of September 2, 2026. The server supports local `stdio`, Streamable HTTP, Render staging deployment, authenticated multi-user access, security hardening, reliability controls for timeout budgets, retries, circuit breaking, and cached paper fallback, plus Day 11 protocol workflow and metadata regression testing.
+The project is in Day 12 of the roadmap as of September 4, 2026. The server supports local `stdio`, Streamable HTTP, Render staging deployment, authenticated multi-user access, security hardening, reliability controls for timeout budgets, retries, circuit breaking, cached paper fallback, Day 11 protocol workflow and metadata regression testing, and a Day 12 deterministic evaluation harness with threshold gating.
 
 ## Planned Capabilities
 
@@ -202,6 +202,34 @@ What Day 11 now verifies:
 Current limitation:
 
 - the local Node runtime is `v22.14.0`, while current Inspector docs recommend `22.19.0+`, so Inspector may emit engine warnings even when the CLI verification succeeds
+
+## Day 12 Evaluation
+
+Run the focused Day 12 unit tests:
+
+```powershell
+pytest tests/unit/test_eval_runner.py
+```
+
+Generate the evaluation report and enforce thresholds:
+
+```powershell
+python -m researchops_mcp.evals --fail-on-thresholds
+```
+
+Day 12 artifacts:
+
+- machine-readable report: `docs/evaluation-report.json`
+- human-readable summary: `docs/evaluation-report.md`
+- dataset: `tests/evals/researchops_eval_dataset.jsonl`
+
+What Day 12 now verifies:
+
+- a 42-case MCP evaluation dataset covering direct, indirect, ambiguous, refusal, prompt-injection, and dependency-oriented prompts
+- thresholded metrics for selection quality, argument correctness, refusal behavior, and latency
+- measurable regression impact when MCP tool descriptions are flattened into generic metadata
+- automated regression gating through `.github/workflows/evals.yml`
+
 
 ## Docker
 

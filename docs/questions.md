@@ -70,3 +70,13 @@
 - Correct explanation: In MCP, tool schemas, descriptions, and discovery metadata are part of the interface contract. A breaking schema change can disrupt client behavior and model tool selection even if the underlying business logic still works, so it should be caught by contract regression tests rather than only by generic negative-path tests.
 - Revisit on: Day 13
 - Status: Understood
+
+## Question
+
+- Date: 2026-09-04
+- Related day: Day 12
+- Question: Why does a vague `tools/list` description weaken MCP behavior even when the backend tools still work?
+- Current understanding: Because the model uses tool names and descriptions to decide which capability to call.
+- Correct explanation: In MCP, discovery metadata is operational interface data. If descriptions become vague, the model has weaker evidence for distinguishing tools, prompts, and resources, so selection quality and argument extraction degrade even though the backend implementation is unchanged.
+- Revisit on: Day 14
+- Status: Understood

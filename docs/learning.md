@@ -1552,6 +1552,138 @@ Protocol and application testing in MCP requires more than calling one tool succ
 
 ### Day 12: Model and Tool-Selection Evaluation
 
+#### Learning objectives
+
+- Understand the difference between tool-call precision, tool-call recall, exact-match rate, and argument correctness.
+- Understand why MCP evaluation must measure metadata quality, not only tool execution correctness.
+- Learn how to build a deterministic evaluation dataset that covers direct, indirect, ambiguous, unauthorized, and prompt-injection requests.
+- Understand how latency and policy-refusal metrics complement selection-quality metrics.
+- Learn how to turn an evaluation report into a regression gate.
+
+#### Core concepts
+
+- Tool-call precision asks: when the evaluator chose a capability, how often was it the correct one?
+- Tool-call recall asks: when a prompt should have used a capability, how often was the correct one selected?
+- Argument correctness measures whether the selected capability was called with the expected normalized arguments.
+- Exact-match rate is stricter: capability kind, capability name, and expected arguments all need to line up at the prompt level.
+- Unauthorized-action rate measures whether the planner tries to take actions it should have refused under the caller's scope profile.
+- Hallucinated-tool rate measures whether the planner invents capabilities outside the real MCP contract.
+- In MCP, metadata quality matters because tool names and descriptions are part of the model-facing interface, not just internal comments.
+- A deterministic local evaluation harness is useful even before model-backed evaluation because it can regression-test interface quality without depending on upstream model drift or API cost.
+
+#### How it works
+
+1. Day 12 adds a JSONL dataset with 42 prompts that cover direct requests, indirect requests, resources, prompts, no-tool cases, ambiguous prompts, workflow first steps, unauthorized actions, prompt-injection attempts, and dependency-failure scenarios.
+2. The local evaluation runner loads the dataset and plans a capability choice against the real ResearchOps MCP surface.
+3. The `current` metadata variant uses the actual ResearchOps names and descriptions.
+4. The `generic_descriptions` variant intentionally flattens descriptions to show what happens when MCP metadata becomes vague.
+5. The runner extracts expected arguments, executes the chosen capability through a real in-process MCP client, records latency, and writes `docs/evaluation-report.json`.
+6. The report compares the two metadata variants and checks the `current` variant against explicit thresholds.
+7. A small GitHub Actions workflow now runs the focused Day 12 tests and fails if the current metadata variant drops below threshold.
+
+#### Example
+
+- Prompt: `I need a couple of papers on 'OAuth resource indicators'.`
+- Expected capability: `search_papers`
+- Expected arguments: query `OAuth resource indicators`, limit `5`, page `1`, mode `balanced`
+- Current metadata result: selects `search_papers` correctly
+- Generic description result: often confuses tools, prompts, or resources because the descriptions no longer explain intent clearly
+
+#### Role in our project
+
+Day 12 gives ResearchOps an evaluation layer for MCP-specific behavior rather than only normal application correctness.
+The project can now detect regressions where code still runs but tool descriptions, schemas, or names stop steering the model-facing interface correctly.
+
+#### Why it is designed this way
+
+- The fake paper service keeps evaluation deterministic so failures reflect interface or planner drift, not OpenAlex instability.
+- The dataset is broad enough to test realistic MCP behavior, including refusals and no-tool cases, not only happy-path tool calls.
+- Comparing current metadata against a degraded variant proves that descriptive metadata has real operational impact.
+- Threshold gating turns evaluation from passive reporting into an enforceable regression signal.
+
+#### Alternatives and trade-offs
+
+- Model-backed eval only:
+  - more realistic
+  - more expensive, slower, and subject to model drift
+- Golden-response testing only:
+  - simple
+  - weaker for measuring selection quality across varied phrasings
+- Live dependency evals:
+  - more production-like
+  - less deterministic and harder to run repeatedly
+- No degraded metadata comparison:
+  - less setup
+  - misses the main lesson that MCP metadata affects behavior directly
+
+#### Failure modes
+
+- A vague tool description can cause resource or prompt selection where a tool was expected.
+- Argument extraction can drift even when the tool choice remains correct.
+- Unauthorized-write prompts can become false positives if the evaluation logic ignores auth profile context.
+- Latency metrics can look healthy while selection quality regresses, so both need to be checked.
+- A dataset that only covers direct prompts can hide failures on conversational or ambiguous phrasings.
+
+#### Common mistakes
+
+- Measuring only whether tool execution succeeded instead of whether the right tool was chosen.
+- Treating tool descriptions as documentation rather than operational interface design.
+- Using a flaky live dependency path for every evaluation run.
+- Ignoring no-tool and refusal cases.
+- Setting thresholds without recording why they matter.
+
+#### Security considerations
+
+- Unauthorized-action and prompt-injection cases belong in the evaluation dataset because safe refusal is part of correct MCP behavior.
+- The evaluation harness must not invent capabilities that bypass the real MCP contract.
+- Deterministic local execution reduces the risk of leaking secrets or hammering real external services during repeated evaluation runs.
+
+#### Interview explanation
+
+Model and tool-selection evaluation in MCP is about verifying that the model-facing interface drives the right behavior, not just that the backend tools work. In ResearchOps Day 12, we built a deterministic 42-case evaluation harness that measures capability selection, argument correctness, refusal behavior, and latency. We also compared the current descriptive metadata against intentionally generic descriptions and showed that weaker metadata materially degrades behavior.
+
+#### Questions for revision
+
+1. Why is tool-call precision not enough on its own?
+   Answer: Precision only measures how often chosen capabilities were correct. You also need recall, argument correctness, refusal quality, and latency to know whether the interface is reliably usable.
+
+2. Why does Day 12 compare current metadata against a generic-description variant?
+   Answer: To prove that tool names and descriptions directly affect model behavior in MCP, so metadata changes are operational regressions, not only documentation changes.
+
+3. Why is a deterministic fake paper service useful for this evaluation layer?
+   Answer: It isolates selection and interface regressions from OpenAlex drift, network latency, and quota issues, making results repeatable and cheaper to run.
+
+4. Why do no-tool and unauthorized-action prompts belong in the dataset?
+   Answer: Because correct MCP behavior includes refusing inappropriate actions and recognizing when no MCP capability is needed at all.
+
+5. What does the `--fail-on-thresholds` mode add?
+   Answer: It turns the evaluation report into a regression gate that can fail automated runs when the current MCP metadata drops below the minimum quality bar.
+
+#### Active recall review
+
+1. Question: Why is argument correctness a separate metric from tool precision?
+   Answer: A model can choose the right tool but still extract the wrong IDs, limits, or prompt arguments, so tool choice alone does not prove task readiness.
+
+2. Question: What did the September 4, 2026 Day 12 comparison prove?
+   Answer: It proved that the current descriptive ResearchOps metadata passes the defined thresholds, while generic flattened descriptions materially worsen selection quality, especially on indirect, ambiguous, and refusal-oriented prompts.
+
+3. Question: Why is the Day 12 harness deterministic instead of model-backed?
+   Answer: The immediate goal is regression safety for the MCP interface. Deterministic execution is cheaper, repeatable, and easier to interpret while the project is still building out production controls.
+
+4. Question: Why do unauthorized-action cases belong in a tool-selection evaluation, not only in Day 8 auth tests?
+   Answer: Because an MCP planner should not only execute safely when the server rejects it; it should also prefer refusing clearly unauthorized requests when the auth context already makes the denial obvious.
+
+5. Question: Why is comparing to a degraded metadata variant more convincing than only reporting one good score?
+   Answer: Because it demonstrates causality: the interface wording changed and the selection behavior got worse, which shows the metadata itself is doing real work.
+
+#### References
+
+- MCP specification latest: https://modelcontextprotocol.io/specification/latest
+- OpenAI MCP and connectors guide: https://developers.openai.com/api/docs/guides/tools-connectors-mcp
+- OpenAI API reference for eval-related resources: https://platform.openai.com/docs/api-reference/evals
+- OpenAI responses and tool choice reference: https://developers.openai.com/api/reference/responses/create
+- Pytest documentation: https://docs.pytest.org/
+
 ### Day 13: Observability and Scaling
 
 ### Day 14: Advanced Features and Final Release
