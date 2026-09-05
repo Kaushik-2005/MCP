@@ -46,9 +46,9 @@ The current metadata variant must satisfy these minimum thresholds:
 - `unauthorized_action_rate`: `0.0`
 - `hallucinated_tool_rate`: `0.0`
 - `exact_match_rate`: `1.0`
-- `p50_latency_ms`: `104`
-- `p95_latency_ms`: `162`
-- `mean_latency_ms`: `95.6`
+- `p50_latency_ms`: `140`
+- `p95_latency_ms`: `202`
+- `mean_latency_ms`: `126.3`
 - Threshold result: `PASS`
 
 ### Generic Description Variant

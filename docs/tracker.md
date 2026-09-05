@@ -239,3 +239,13 @@
 - Decisions made: Use stdlib JSON logging and in-process metrics with OpenTelemetry API spans now, while deferring exporter/collector setup until production configuration is justified
 - Topics to revisit: Add a real OpenTelemetry SDK exporter and external metrics backend if the project is deployed beyond local/staging use
 - Next action: Begin Day 14 final release work: final security review, release checklist, demo path, known limitations, and portfolio packaging
+### 2026-09-05 CI Regression Fix
+
+- Topics studied: Runtime dependency declarations versus locally installed transitive dependencies
+- Work implemented: Added explicit `httpx>=0.27.0` to project dependencies because `researchops_mcp.client_cli` imports `httpx` directly for Streamable HTTP client mode
+- Tests executed: `python -m pip install -e .[dev]`; `pytest tests/unit/test_client_cli.py`; `pytest`; `python -m researchops_mcp.evals --fail-on-thresholds`; `docker build -t researchops-mcp:day13 .`
+- Results: CI-equivalent install now includes `httpx`; the previously failing CLI test file passed with 6 tests; full suite passed with 61 tests; evaluation gate passed with p95 latency 202 ms under the 250 ms threshold; Docker image build installed `httpx` in the container
+- Problems encountered: Local development had `httpx` installed already, so the missing dependency only appeared in clean CI
+- Decisions made: Keep `httpx` as a runtime dependency instead of a dev-only dependency because HTTP client mode is part of the shipped CLI
+- Topics to revisit: Consider a future clean-venv CI smoke test if dependency drift recurs
+- Next action: Continue Day 14 final release work
