@@ -177,3 +177,17 @@
 - Why: This keeps the signal focused on MCP interface quality, makes results repeatable, and directly tests the claim that tool names and descriptions influence model-facing behavior.
 - Trade-offs: The harness is heuristic rather than a true live-model benchmark, and it does not yet measure result grounding or per-task token cost.
 - Consequences: ResearchOps now has a low-cost regression gate for metadata quality, and Day 13 or later can add broader observability or model-backed evaluation without replacing the deterministic baseline.
+
+## Decision: Start Observability With Stdlib Metrics And OpenTelemetry API Spans
+
+- Date: 2026-09-05
+- Status: Accepted
+- Context: Day 13 required tracing, metrics, health/readiness, CI expansion, and production-operability work, but adding a full exporter stack would add deployment configuration before the final release shape is fixed.
+- Options considered:
+  - Add OpenTelemetry SDK, exporters, and collector configuration immediately
+  - Add only ad hoc logging
+  - Add a small local observability registry with JSON logs, metrics, request IDs, and OpenTelemetry API spans
+- Decision: Use stdlib JSON logging and in-process metrics with OpenTelemetry API spans now, and defer SDK exporter or collector setup until production deployment requires it.
+- Why: This gives concrete local observability and testable signal while keeping dependencies and deployment configuration small.
+- Trade-offs: Metrics are process-local and traces are no-op unless an OpenTelemetry SDK/exporter is configured later.
+- Consequences: The code now has stable observability boundaries that can later feed Prometheus, OTLP, or another backend without redesigning MCP handlers.

@@ -1686,6 +1686,130 @@ Model and tool-selection evaluation in MCP is about verifying that the model-fac
 
 ### Day 13: Observability and Scaling
 
+#### Learning objectives
+
+- Understand logs, metrics, and traces as different observability signals.
+- Learn why MCP servers need request and correlation IDs across HTTP, tool, resource, prompt, and dependency work.
+- Understand P50, P95, and P99 latency and why averages are not enough.
+- Learn how to collect PII-safe operational telemetry without leaking note content, tokens, or idempotency keys.
+- Understand the difference between local in-process observability and production OpenTelemetry export through a collector.
+
+#### Core concepts
+
+- A log is an event record, such as `operation_completed`, useful for debugging one occurrence.
+- A metric is a measurement over time, such as `tool.search_papers.failure_rate` or P95 latency.
+- A trace follows one request across components, such as HTTP middleware, MCP tool handler, service layer, and OpenAlex dependency call.
+- A request ID gives one incoming request a stable correlation handle that can appear in response headers and logs.
+- Latency percentiles show distribution: P50 is typical, P95 is slow-tail, and P99 is the extreme tail.
+- Dependency latency must be measured separately from tool latency so we can tell whether slowness is inside ResearchOps or upstream in OpenAlex.
+- PII-safe telemetry means logs and metrics should record operational facts, not private note content, bearer tokens, or raw user data.
+
+#### How it works
+
+1. `src/researchops_mcp/observability.py` provides a JSON log formatter, an in-process metrics registry, OpenTelemetry API spans, percentile calculation, and HTTP request ID middleware.
+2. MCP tools, resources, and prompts use the shared registry to record operation count, success count, failure count, success/failure rate, mean latency, P50, P95, and P99 latency.
+3. The OpenAlex client records separate `dependency.openalex` latency so dependency cost can be compared with end-to-end tool latency.
+4. Streamable HTTP responses include `x-request-id`, using the caller-provided ID when present or a generated ID otherwise.
+5. HTTP `/healthz`, `/readyz`, and `/metrics` routes expose operational status and local metrics.
+6. `health_check` now includes an observability snapshot so MCP clients can inspect operational state without using a separate HTTP endpoint.
+7. CI now has a general workflow for syntax checks, full tests, eval thresholding, and Docker image build.
+
+#### Example
+
+If `search_papers` has P95 latency of 1500 ms and `dependency.openalex` has P95 latency of 1400 ms, most of the delay is upstream. If `search_papers` has P95 latency of 1500 ms but `dependency.openalex` is 200 ms, the bottleneck is likely inside ResearchOps: database work, serialization, middleware, or handler logic.
+
+#### Role in our project
+
+Day 13 makes ResearchOps easier to operate and debug as a production candidate. Instead of only knowing that a tool failed, we can now inspect which operation failed, how often, how slowly, and whether the dependency path was involved.
+
+#### Why it is designed this way
+
+- The first implementation uses the standard library plus the already-installed OpenTelemetry API so the project gains signal without introducing an exporter stack too early.
+- Metrics live in a separate registry so transport, service, security, and persistence code do not own reporting details.
+- The HTTP middleware adds correlation IDs at the boundary where remote requests enter the system.
+- Redaction happens before log serialization so sensitive fields do not accidentally reach monitoring systems.
+
+#### Alternatives and trade-offs
+
+- Full OpenTelemetry SDK and collector now:
+  - more production-like
+  - adds configuration, exporter, and deployment complexity
+- In-process metrics first:
+  - simple and testable
+  - process-local and reset on restart
+- Only logs:
+  - easy to inspect
+  - weak for rates, percentiles, and dashboards
+- Only metrics:
+  - useful for dashboards
+  - weaker for debugging a specific request without request IDs and logs
+
+#### Failure modes
+
+- Logging raw tool arguments can leak note content, tokens, idempotency keys, or private research data.
+- Averages can hide slow-tail latency that affects real users.
+- Metrics without dependency labels make it hard to separate server regressions from upstream outages.
+- Process-local counters disappear on restart and do not aggregate across instances.
+- Request IDs are less useful if they are not returned to the client or included in logs.
+
+#### Common mistakes
+
+- Treating observability as only logging.
+- Logging full request bodies or tool arguments.
+- Measuring tool latency but not dependency latency.
+- Adding a dashboard before defining useful metrics.
+- Calling a service production-ready without health, readiness, and failure-rate signals.
+
+#### Security considerations
+
+- Observability data often leaves the application boundary, so it must be treated as a potential data-exfiltration path.
+- Bearer tokens, idempotency keys, note content, and raw authorization headers are redacted from structured logs.
+- Metrics should use bounded labels such as operation name and operation type, not unbounded user input.
+- Request IDs should correlate events without becoming authentication or authorization secrets.
+
+#### Interview explanation
+
+Observability for an MCP server means collecting enough PII-safe telemetry to explain what happened across the protocol boundary, the handler, and external dependencies. In ResearchOps Day 13, we added structured JSON operation logs, request IDs, per-operation metrics with latency percentiles, dependency latency for OpenAlex, health/readiness/metrics HTTP routes, and OpenTelemetry API spans that can later be exported through a production collector.
+
+#### Questions for revision
+
+1. Why do logs, metrics, and traces solve different problems?
+   Answer: Logs explain individual events, metrics show aggregate behavior over time, and traces connect one request across components.
+
+2. Why is dependency latency separate from tool latency?
+   Answer: It lets us determine whether slowness is caused by the ResearchOps server or by OpenAlex.
+
+3. Why are P95 and P99 latency useful when we already have average latency?
+   Answer: Averages can hide slow-tail behavior. P95 and P99 show what slower users experience.
+
+4. Why must observability be PII-safe?
+   Answer: Logs and telemetry often leave the app boundary, so private notes, tokens, and raw user content must not be copied into monitoring systems.
+
+5. What is the role of `x-request-id`?
+   Answer: It gives the client and server a shared correlation handle for debugging one request across logs and responses.
+
+#### Active recall review
+
+1. Question: What signal would you compare if `search_papers` feels slow?
+   Answer: Compare `tool.search_papers` latency with `dependency.openalex` latency. If both are high, OpenAlex is likely the bottleneck; if only the tool is high, the server path needs investigation.
+
+2. Question: Why did Day 13 use bounded operation names as metric labels?
+   Answer: Bounded labels avoid high-cardinality metrics caused by raw user input, paper titles, note content, or tokens.
+
+3. Question: Why does `health_check` include an observability snapshot?
+   Answer: It lets an MCP client inspect operational state through the MCP surface, while HTTP deployments can also use `/metrics`.
+
+4. Question: Why is OpenTelemetry API instrumentation useful even before an exporter is configured?
+   Answer: It places span boundaries in the code now, so a future SDK/exporter setup can collect traces without redesigning handlers.
+
+#### References
+
+- OpenTelemetry Python documentation: https://opentelemetry.io/docs/languages/python/
+- OpenTelemetry semantic conventions: https://opentelemetry.io/docs/specs/semconv/
+- OpenTelemetry HTTP semantic conventions: https://opentelemetry.io/docs/specs/semconv/http/
+- OpenTelemetry API reference: https://opentelemetry-python.readthedocs.io/en/latest/api/index.html
+- MCP specification latest: https://modelcontextprotocol.io/specification/latest
+
 ### Day 14: Advanced Features and Final Release
 
 

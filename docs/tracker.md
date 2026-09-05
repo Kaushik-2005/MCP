@@ -3,9 +3,9 @@
 ## Current Position
 
 - Current module: Module 5 - Testing, Evaluation, and Production
-- Current day: Day 13 - observability and scaling
-- Current task: Day 12 evaluation harness, thresholds, report, and regression workflow completed
-- Next milestone: Begin observability and scaling design
+- Current day: Day 14 - advanced features and final release
+- Current task: Day 13 observability and scaling completed
+- Next milestone: Begin final release hardening and portfolio packaging
 - Active blockers: None
 
 ## Roadmap Progress
@@ -24,7 +24,7 @@
 | 10 | Security and Reliability | Reliability engineering | Completed | Predictable behavior during dependency failures | `pytest tests/unit/test_openalex_service.py` passed with 9 tests and full `pytest` passed with 44 tests on 2026-09-01; `python src/server.py --help` and `python client/cli.py call-tool health_check` verified timeout, deadline, retry, and circuit-breaker settings were exposed and wired into the running server | 4 |
 | 11 | Testing and Production | Protocol and application testing | Completed | Automated tests and MCP Inspector report | `pytest tests/integration/test_protocol_workflows.py tests/unit/test_mcp_metadata_regression.py` passed with 6 tests; full `pytest` passed with 51 tests on 2026-09-02; `npx @modelcontextprotocol/inspector@latest --cli python src/server.py --method tools/list --format json` listed the expected 9-tool catalog | 4 |
 | 12 | Testing and Production | Model and tool-selection evaluation | Completed | Deterministic evaluation harness, 42-case dataset, JSON and Markdown reports, and regression workflow | `pytest tests/unit/test_eval_runner.py` passed with 5 tests; `python -m researchops_mcp.evals --fail-on-thresholds` passed on 2026-09-04; `docs/evaluation-report.json` recorded current metadata thresholds passing and generic descriptions degrading tool selection | 4 |
-| 13 | Testing and Production | Observability and scaling | Not Started | Observable production candidate | — | — |
+| 13 | Testing and Production | Observability and scaling | Completed | Observable production candidate with structured logs, request IDs, per-operation metrics, dependency latency, health/readiness/metrics endpoints, OpenTelemetry API spans, and broader CI | `python -m compileall src tests` passed; `pytest` passed with 61 tests; `python -m researchops_mcp.evals --fail-on-thresholds` passed; `docker build -t researchops-mcp:day13 .` passed on 2026-09-05 | 4 |
 | 14 | Testing and Production | Advanced features and final release | Not Started | Portfolio-ready MCP project | — | — |
 
 ## Session Log
@@ -228,3 +228,14 @@
 - Decisions made: Keep Day 12 evaluation deterministic with a fake paper service and compare the current metadata against an intentionally degraded metadata variant
 - Topics to revisit: Whether later model-backed evaluation should supplement this deterministic harness with result-grounding and cost-per-task measurement
 - Next action: Begin Day 13 by adding observability primitives, request IDs, and per-tool telemetry
+
+### 2026-09-05 Day 13 Closeout
+
+- Topics studied: structured logging, request IDs, metrics per operation, success and failure rates, latency percentiles, dependency latency, PII-safe telemetry, health/readiness checks, OpenTelemetry API spans, and CI expansion
+- Work implemented: Added `src/researchops_mcp/observability.py`; instrumented MCP tools, resources, prompts, HTTP requests, and OpenAlex dependency calls; exposed `/healthz`, `/readyz`, `/metrics`, and observability data in `health_check`; added focused observability tests; added `.github/workflows/ci.yml`; created `docs/session-handoff.md`
+- Tests executed: `pytest tests/unit/test_observability.py`; `pytest tests/unit/test_observability.py tests/unit/test_openalex_service.py`; `python -m compileall src tests`; `pytest`; `python -m researchops_mcp.evals --fail-on-thresholds`; `docker build -t researchops-mcp:day13 .`
+- Results: 5 observability tests passed; 14 focused observability/OpenAlex tests passed; full suite passed with 61 tests; eval threshold gate passed; Docker image build succeeded on 2026-09-05
+- Problems encountered: The Windows sandbox helper remained unavailable, so several reads and edits required escalated execution; `apply_patch` worked for new files but failed for some existing-file updates
+- Decisions made: Use stdlib JSON logging and in-process metrics with OpenTelemetry API spans now, while deferring exporter/collector setup until production configuration is justified
+- Topics to revisit: Add a real OpenTelemetry SDK exporter and external metrics backend if the project is deployed beyond local/staging use
+- Next action: Begin Day 14 final release work: final security review, release checklist, demo path, known limitations, and portfolio packaging

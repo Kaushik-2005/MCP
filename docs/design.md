@@ -24,12 +24,13 @@ The latest completed day appears at the end.
 - Repository layer: SQLite schema, transactions, and durable reads and writes.
 - External dependency layer: OpenAlex-backed paper lookup and search.
 - Security layer: HTTP middleware, outbound controls, trust labeling, and validation limits.
-- Verification layer: automated MCP workflow, contract, regression, and evaluation tests.
+- Verification layer: automated MCP workflow, contract, regression, evaluation, observability, and CI checks.
 
 ### File Ownership
 
 - `src/researchops_mcp/server.py`: MCP transport layer and server factory.
 - `src/researchops_mcp/security.py`: shared security controls and middleware.
+- `src/researchops_mcp/observability.py`: structured logging, request IDs, metrics, and OpenTelemetry API span helpers.
 - `src/researchops_mcp/services/openalex.py`: OpenAlex integration and paper normalization.
 - `src/researchops_mcp/services/context.py`: resource and prompt rendering helpers.
 - `src/researchops_mcp/services/library.py`: durable reading-list and note business logic.
@@ -608,3 +609,87 @@ sequenceDiagram
 - The current harness is deterministic and heuristic, not a live model benchmark.
 - Result-grounding accuracy and cost-per-task are not yet measured.
 - The GitHub Actions workflow only covers the Day 12 regression slice; broader CI remains Day 13 work.
+
+## Day 13: Observability And Scaling
+
+### What Changed
+
+Day 13 added operational visibility without changing the MCP capability names or schemas. The server now records structured logs, request IDs, in-process metrics, OpenTelemetry API spans, and dependency latency.
+
+### Observability Boundary Placement
+
+#### Observability Module
+
+`src/researchops_mcp/observability.py` owns:
+
+- JSON log formatting
+- sensitive-field redaction before log serialization
+- request ID middleware
+- in-process operation metrics
+- P50, P95, and P99 latency calculation
+- OpenTelemetry API span boundaries
+
+This keeps telemetry mechanics separate from transport and business logic.
+
+#### MCP Operation Instrumentation
+
+Tool, resource, and prompt handlers record metrics under bounded names such as:
+
+- `tool.search_papers`
+- `tool.add_note`
+- `resource.paper_resource`
+- `prompt.compare_papers`
+
+Each operation snapshot includes count, success count, failure count, success/failure rate, mean latency, P50, P95, and P99 latency.
+
+#### Dependency Instrumentation
+
+OpenAlex calls record `dependency.openalex` separately from MCP tool latency. This makes it possible to compare end-to-end tool time against upstream dependency time.
+
+#### HTTP Boundary
+
+The Streamable HTTP app now adds request IDs and exposes:
+
+- `/healthz` for liveness
+- `/readyz` for readiness
+- `/metrics` for local operation metrics
+
+HTTP responses include `x-request-id` so manual and automated clients can correlate server logs with a specific request.
+
+### Request Flow: Observed Search
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant HTTP as HTTP Middleware
+    participant MCP as search_papers Tool
+    participant Obs as Observability Registry
+    participant OpenAlex as OpenAlex Client
+
+    Client->>HTTP: POST /mcp with optional x-request-id
+    HTTP->>Obs: record http request latency
+    HTTP->>MCP: dispatch tools/call search_papers
+    MCP->>Obs: start tool.search_papers metric and span
+    MCP->>OpenAlex: search works
+    OpenAlex->>Obs: record dependency.openalex latency and span
+    OpenAlex-->>MCP: normalized papers
+    MCP-->>Client: MCP tool result
+    HTTP-->>Client: response with x-request-id
+```
+
+### CI Expansion
+
+`.github/workflows/ci.yml` now checks:
+
+- Python syntax with `python -m compileall src tests`
+- full test suite with `pytest`
+- evaluation threshold gate with `python -m researchops_mcp.evals --fail-on-thresholds`
+- Docker image build with `docker build -t researchops-mcp:ci .`
+
+### Known Limitations After Day 13
+
+- Metrics are in-process and reset on restart.
+- Metrics are not aggregated across multiple server instances.
+- OpenTelemetry uses API spans, but no SDK exporter or collector is configured yet.
+- `/metrics` currently returns JSON rather than Prometheus exposition format.
+- Readiness is lightweight and does not yet perform deep database or OpenAlex dependency probes.

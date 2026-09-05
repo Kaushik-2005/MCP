@@ -9,6 +9,8 @@ from typing import Any
 
 import uvicorn
 from mcp.server import MCPServer
+from starlette.responses import JSONResponse
+from starlette.routing import Route
 
 from researchops_mcp.auth import (
     DEFAULT_AUTH_ENABLED,
@@ -23,6 +25,7 @@ from researchops_mcp.auth import (
     seed_known_users,
 )
 from researchops_mcp.repositories.sqlite import SQLiteRepository
+from researchops_mcp.observability import ObservabilityRegistry, RequestIdMiddleware
 from researchops_mcp.security import (
     DEFAULT_MAX_HTTP_BODY_BYTES,
     DEFAULT_RATE_LIMIT_MAX_REQUESTS,
@@ -82,7 +85,9 @@ def create_server(
     openalex_retry_attempts: int = DEFAULT_OPENALEX_RETRY_ATTEMPTS_SETTING,
     openalex_breaker_failure_threshold: int = DEFAULT_OPENALEX_BREAKER_FAILURE_THRESHOLD_SETTING,
     openalex_breaker_reset_seconds: float = DEFAULT_OPENALEX_BREAKER_RESET_SECONDS_SETTING,
+    observability: ObservabilityRegistry | None = None,
 ) -> MCPServer:
+    telemetry = observability or ObservabilityRegistry()
     repository = SQLiteRepository(database_path or DEFAULT_DB_PATH)
     seed_known_users(repository)
     resolved_paper_service = paper_service or PaperService(
@@ -92,6 +97,7 @@ def create_server(
             retry_attempts=openalex_retry_attempts,
             circuit_breaker_failure_threshold=openalex_breaker_failure_threshold,
             circuit_breaker_reset_seconds=openalex_breaker_reset_seconds,
+            observability=telemetry,
         ),
         paper_store=repository,
     )
@@ -124,123 +130,127 @@ def create_server(
     )
 
     @server.tool()
-    def health_check() -> dict[str, str | bool | int | float]:
+    def health_check() -> dict[str, Any]:
         """Check whether the ResearchOps MCP server is reachable."""
-        return {
-            "status": "ok",
-            "server": "researchops-mcp",
-            "paper_source": "OpenAlex",
-            "storage": "SQLite",
-            "database_path": repository.db_path,
-            "auth_enabled": auth_enabled,
-            "max_http_body_bytes": DEFAULT_MAX_HTTP_BODY_BYTES_SETTING,
-            "rate_limit_max_requests": DEFAULT_RATE_LIMIT_MAX_REQUESTS_SETTING,
-            "openalex_timeout_seconds": openalex_timeout_seconds,
-            "openalex_deadline_seconds": openalex_deadline_seconds,
-            "openalex_retry_attempts": openalex_retry_attempts,
-            "openalex_breaker_failure_threshold": openalex_breaker_failure_threshold,
-            "openalex_breaker_reset_seconds": openalex_breaker_reset_seconds,
-        }
+        with telemetry.observe("tool", "health_check"):
+            return build_health_payload(
+                repository_db_path=repository.db_path,
+                auth_enabled=auth_enabled,
+                openalex_timeout_seconds=openalex_timeout_seconds,
+                openalex_deadline_seconds=openalex_deadline_seconds,
+                openalex_retry_attempts=openalex_retry_attempts,
+                openalex_breaker_failure_threshold=openalex_breaker_failure_threshold,
+                openalex_breaker_reset_seconds=openalex_breaker_reset_seconds,
+                observability=telemetry,
+            )
 
     @server.tool()
     def search_papers(query: str, limit: int = 5, page: int = 1, search_mode: str = "balanced") -> dict[str, Any]:
         """Search OpenAlex papers by keyword."""
-        require_scope("papers:read")
-        try:
-            return resolved_paper_service.search_papers(query=query, page=page, limit=limit, search_mode=search_mode)
-        except PaperServiceError as exc:
-            raise ValueError(str(exc)) from exc
+        with telemetry.observe("tool", "search_papers"):
+            require_scope("papers:read")
+            try:
+                return resolved_paper_service.search_papers(query=query, page=page, limit=limit, search_mode=search_mode)
+            except PaperServiceError as exc:
+                raise ValueError(str(exc)) from exc
 
     @server.tool()
     def get_paper(paper_id: str) -> dict[str, Any]:
         """Retrieve one OpenAlex paper by stable identifier."""
-        require_scope("papers:read")
-        try:
-            return resolved_paper_service.get_paper(paper_id)
-        except PaperServiceError as exc:
-            raise ValueError(str(exc)) from exc
+        with telemetry.observe("tool", "get_paper"):
+            require_scope("papers:read")
+            try:
+                return resolved_paper_service.get_paper(paper_id)
+            except PaperServiceError as exc:
+                raise ValueError(str(exc)) from exc
 
     @server.tool()
     def export_bibtex(paper_id: str) -> dict[str, str]:
         """Export a single paper citation in BibTeX format."""
-        require_scope("papers:read")
-        try:
-            return resolved_paper_service.export_bibtex(paper_id)
-        except PaperServiceError as exc:
-            raise ValueError(str(exc)) from exc
+        with telemetry.observe("tool", "export_bibtex"):
+            require_scope("papers:read")
+            try:
+                return resolved_paper_service.export_bibtex(paper_id)
+            except PaperServiceError as exc:
+                raise ValueError(str(exc)) from exc
 
     @server.tool()
     def create_reading_list(name: str, idempotency_key: str, description: str = "") -> dict[str, Any]:
         """Create a persistent reading list. This is a write action and must include a stable idempotency key."""
-        require_scope("lists:write")
-        try:
-            return library_service.create_reading_list(
-                name=name,
-                description=description,
-                idempotency_key=idempotency_key,
-                user_id=current_user_id(),
-            )
-        except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
-            raise ValueError(str(exc)) from exc
+        with telemetry.observe("tool", "create_reading_list"):
+            require_scope("lists:write")
+            try:
+                return library_service.create_reading_list(
+                    name=name,
+                    description=description,
+                    idempotency_key=idempotency_key,
+                    user_id=current_user_id(),
+                )
+            except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
+                raise ValueError(str(exc)) from exc
 
     @server.tool()
     def add_paper_to_list(list_id: str, paper_id: str, idempotency_key: str) -> dict[str, Any]:
         """Add one paper to an existing reading list. Use only after the list already exists."""
-        require_scope("lists:write")
-        try:
-            return library_service.add_paper_to_list(
-                list_id=list_id,
-                paper_id=paper_id,
-                idempotency_key=idempotency_key,
-                user_id=current_user_id(),
-            )
-        except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
-            raise ValueError(str(exc)) from exc
+        with telemetry.observe("tool", "add_paper_to_list"):
+            require_scope("lists:write")
+            try:
+                return library_service.add_paper_to_list(
+                    list_id=list_id,
+                    paper_id=paper_id,
+                    idempotency_key=idempotency_key,
+                    user_id=current_user_id(),
+                )
+            except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
+                raise ValueError(str(exc)) from exc
 
     @server.tool()
     def add_note(list_id: str, paper_id: str, content: str, idempotency_key: str) -> dict[str, Any]:
         """Add a persistent note for a paper that is already in the specified reading list."""
-        require_scope("notes:write")
-        try:
-            return library_service.add_note(
-                list_id=list_id,
-                paper_id=paper_id,
-                content=content,
-                idempotency_key=idempotency_key,
-                user_id=current_user_id(),
-            )
-        except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
-            raise ValueError(str(exc)) from exc
+        with telemetry.observe("tool", "add_note"):
+            require_scope("notes:write")
+            try:
+                return library_service.add_note(
+                    list_id=list_id,
+                    paper_id=paper_id,
+                    content=content,
+                    idempotency_key=idempotency_key,
+                    user_id=current_user_id(),
+                )
+            except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
+                raise ValueError(str(exc)) from exc
 
     @server.tool()
     def update_note(note_id: str, content: str, expected_version: int, idempotency_key: str) -> dict[str, Any]:
         """Update an existing note using optimistic concurrency via expected_version."""
-        require_scope("notes:write")
-        try:
-            return library_service.update_note(
-                note_id=note_id,
-                content=content,
-                expected_version=expected_version,
-                idempotency_key=idempotency_key,
-                user_id=current_user_id(),
-            )
-        except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
-            raise ValueError(str(exc)) from exc
+        with telemetry.observe("tool", "update_note"):
+            require_scope("notes:write")
+            try:
+                return library_service.update_note(
+                    note_id=note_id,
+                    content=content,
+                    expected_version=expected_version,
+                    idempotency_key=idempotency_key,
+                    user_id=current_user_id(),
+                )
+            except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
+                raise ValueError(str(exc)) from exc
 
     @server.tool()
     def delete_note(note_id: str, expected_version: int, confirm: bool, idempotency_key: str) -> dict[str, Any]:
         """Delete a note only when confirm is true and the expected_version still matches."""
-        require_scope("notes:write")
-        try:
-            return library_service.delete_note(
-                note_id=note_id,
-                expected_version=expected_version,
-                confirm=confirm,
-                idempotency_key=idempotency_key,
-                user_id=current_user_id(),
-            )
-        except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
-            raise ValueError(str(exc)) from exc
+        with telemetry.observe("tool", "delete_note"):
+            require_scope("notes:write")
+            try:
+                return library_service.delete_note(
+                    note_id=note_id,
+                    expected_version=expected_version,
+                    confirm=confirm,
+                    idempotency_key=idempotency_key,
+                    user_id=current_user_id(),
+                )
+            except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
+                raise ValueError(str(exc)) from exc
 
     @server.resource(
         "paper://{paper_id}",
@@ -251,11 +261,12 @@ def create_server(
     )
     def paper_resource(paper_id: str) -> str:
         """Read one paper as a stable MCP resource."""
-        require_scope("papers:read")
-        try:
-            return build_paper_resource_document(resolved_paper_service, paper_id)
-        except PaperServiceError as exc:
-            raise ValueError(str(exc)) from exc
+        with telemetry.observe("resource", "paper_resource"):
+            require_scope("papers:read")
+            try:
+                return build_paper_resource_document(resolved_paper_service, paper_id)
+            except PaperServiceError as exc:
+                raise ValueError(str(exc)) from exc
 
     @server.resource(
         "reading-list://{list_id}",
@@ -266,25 +277,28 @@ def create_server(
     )
     def reading_list_resource(list_id: str) -> str:
         """Read one persistent reading list as a stable MCP resource."""
-        require_scope("lists:read")
-        try:
-            return build_reading_list_resource_document(
-                library_service.get_reading_list(list_id, user_id=current_user_id())
-            )
-        except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
-            raise ValueError(str(exc)) from exc
+        with telemetry.observe("resource", "reading_list_resource"):
+            require_scope("lists:read")
+            try:
+                return build_reading_list_resource_document(
+                    library_service.get_reading_list(list_id, user_id=current_user_id())
+                )
+            except (LibraryServiceError, PaperServiceError, ForbiddenError) as exc:
+                raise ValueError(str(exc)) from exc
 
     @server.prompt()
     def compare_papers(paper_id_a: str, paper_id_b: str, focus: str = "overall contribution") -> str:
         """Reusable prompt for comparing two paper resources."""
-        require_scope("papers:read")
-        return build_compare_papers_prompt(paper_id_a=paper_id_a, paper_id_b=paper_id_b, focus=focus)
+        with telemetry.observe("prompt", "compare_papers"):
+            require_scope("papers:read")
+            return build_compare_papers_prompt(paper_id_a=paper_id_a, paper_id_b=paper_id_b, focus=focus)
 
     @server.prompt()
     def generate_literature_review(topic: str, paper_ids: str, objective: str = "summary") -> str:
         """Reusable prompt for drafting a literature review from selected paper resources."""
-        require_scope("papers:read")
-        return build_literature_review_prompt(topic=topic, paper_ids=paper_ids, objective=objective)
+        with telemetry.observe("prompt", "generate_literature_review"):
+            require_scope("papers:read")
+            return build_literature_review_prompt(topic=topic, paper_ids=paper_ids, objective=objective)
 
     return server
 
@@ -310,8 +324,10 @@ def create_streamable_http_app(
     openalex_retry_attempts: int = DEFAULT_OPENALEX_RETRY_ATTEMPTS_SETTING,
     openalex_breaker_failure_threshold: int = DEFAULT_OPENALEX_BREAKER_FAILURE_THRESHOLD_SETTING,
     openalex_breaker_reset_seconds: float = DEFAULT_OPENALEX_BREAKER_RESET_SECONDS_SETTING,
+    observability: ObservabilityRegistry | None = None,
 ):
     """Build a Streamable HTTP ASGI app for remote-style serving."""
+    telemetry = observability or ObservabilityRegistry()
     app_server = create_server(
         database_path=database_path,
         auth_enabled=auth_enabled,
@@ -322,6 +338,7 @@ def create_streamable_http_app(
         openalex_retry_attempts=openalex_retry_attempts,
         openalex_breaker_failure_threshold=openalex_breaker_failure_threshold,
         openalex_breaker_reset_seconds=openalex_breaker_reset_seconds,
+        observability=telemetry,
     )
     app = app_server.streamable_http_app(
         streamable_http_path=streamable_http_path,
@@ -329,6 +346,10 @@ def create_streamable_http_app(
         stateless_http=stateless_http,
         host=host,
     )
+    app.routes.append(Route("/healthz", healthz))
+    app.routes.append(Route("/readyz", readyz))
+    app.routes.append(Route("/metrics", build_metrics_route(telemetry)))
+    app.add_middleware(RequestIdMiddleware, registry=telemetry)
     app.add_middleware(RequestSizeLimitMiddleware, max_body_bytes=max_http_body_bytes)
     app.add_middleware(
         RateLimitMiddleware,
@@ -347,6 +368,54 @@ def create_streamable_http_app(
             resource_server_url=resource_server_url,
         )
     return app
+
+
+def build_health_payload(
+    *,
+    repository_db_path: str,
+    auth_enabled: bool,
+    openalex_timeout_seconds: float,
+    openalex_deadline_seconds: float,
+    openalex_retry_attempts: int,
+    openalex_breaker_failure_threshold: int,
+    openalex_breaker_reset_seconds: float,
+    observability: ObservabilityRegistry,
+) -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "server": "researchops-mcp",
+        "paper_source": "OpenAlex",
+        "storage": "SQLite",
+        "database_path": repository_db_path,
+        "auth_enabled": auth_enabled,
+        "max_http_body_bytes": DEFAULT_MAX_HTTP_BODY_BYTES_SETTING,
+        "rate_limit_max_requests": DEFAULT_RATE_LIMIT_MAX_REQUESTS_SETTING,
+        "openalex_timeout_seconds": openalex_timeout_seconds,
+        "openalex_deadline_seconds": openalex_deadline_seconds,
+        "openalex_retry_attempts": openalex_retry_attempts,
+        "openalex_breaker_failure_threshold": openalex_breaker_failure_threshold,
+        "openalex_breaker_reset_seconds": openalex_breaker_reset_seconds,
+        "observability": observability.snapshot(),
+    }
+
+
+async def healthz(request):
+    return JSONResponse({"status": "ok", "service": "researchops-mcp"})
+
+
+async def readyz(request):
+    return JSONResponse({"status": "ready", "service": "researchops-mcp"})
+
+
+async def metrics(request, observability: ObservabilityRegistry):
+    return JSONResponse(observability.snapshot())
+
+
+def build_metrics_route(observability: ObservabilityRegistry):
+    async def metrics_route(request):
+        return await metrics(request, observability)
+
+    return metrics_route
 
 
 def build_parser() -> argparse.ArgumentParser:

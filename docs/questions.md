@@ -80,3 +80,13 @@
 - Correct explanation: In MCP, discovery metadata is operational interface data. If descriptions become vague, the model has weaker evidence for distinguishing tools, prompts, and resources, so selection quality and argument extraction degrade even though the backend implementation is unchanged.
 - Revisit on: Day 14
 - Status: Understood
+
+## Question
+
+- Date: 2026-09-05
+- Related day: Day 13
+- Question: Why is measuring only `search_papers` latency insufficient for debugging slow paper search?
+- Current understanding: We need to compare it with OpenAlex latency to know whether the bottleneck is upstream or inside our server.
+- Correct explanation: End-to-end tool latency shows the user's experience, but dependency latency shows how much of that time was spent waiting on OpenAlex. If both are high, OpenAlex is likely slow. If tool latency is high while dependency latency is low, the server path needs investigation.
+- Revisit on: Day 14
+- Status: Understood

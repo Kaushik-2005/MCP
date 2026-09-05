@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-04",
+  "generated_at": "2026-09-05",
   "dataset_path": "C:\\Users\\kaush\\OneDrive\\Desktop\\Work\\MCP\\tests\\evals\\researchops_eval_dataset.jsonl",
   "case_count": 42,
   "variants": {
@@ -12,9 +12,9 @@
         "unauthorized_action_rate": 0.0,
         "hallucinated_tool_rate": 0.0,
         "exact_match_rate": 1.0,
-        "p50_latency_ms": 105,
-        "p95_latency_ms": 149,
-        "mean_latency_ms": 96.0
+        "p50_latency_ms": 106,
+        "p95_latency_ms": 148,
+        "mean_latency_ms": 97.8
       },
       "thresholds": {
         "tool_precision": 0.95,
@@ -70,7 +70,7 @@
           "passed": true
         },
         "p95_latency_ms": {
-          "actual": 149,
+          "actual": 148,
           "threshold": 250,
           "comparator": "<=",
           "passed": true
@@ -103,7 +103,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 379
+          "latency_ms": 330
         },
         {
           "case_id": "eval-002",
@@ -130,7 +130,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 105
+          "latency_ms": 109
         },
         {
           "case_id": "eval-003",
@@ -157,7 +157,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 110
+          "latency_ms": 124
         },
         {
           "case_id": "eval-004",
@@ -178,7 +178,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 166
+          "latency_ms": 182
         },
         {
           "case_id": "eval-005",
@@ -199,7 +199,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 109
+          "latency_ms": 108
         },
         {
           "case_id": "eval-006",
@@ -220,7 +220,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 108
+          "latency_ms": 102
         },
         {
           "case_id": "eval-007",
@@ -245,7 +245,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 113
+          "latency_ms": 114
         },
         {
           "case_id": "eval-008",
@@ -270,7 +270,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 112
+          "latency_ms": 114
         },
         {
           "case_id": "eval-009",
@@ -295,7 +295,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 110
+          "latency_ms": 114
         },
         {
           "case_id": "eval-010",
@@ -322,7 +322,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 113
+          "latency_ms": 114
         },
         {
           "case_id": "eval-011",
@@ -349,7 +349,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 149
+          "latency_ms": 148
         },
         {
           "case_id": "eval-012",
@@ -376,7 +376,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 143
+          "latency_ms": 147
         },
         {
           "case_id": "eval-013",
@@ -397,7 +397,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 101
+          "latency_ms": 104
         },
         {
           "case_id": "eval-014",
@@ -418,7 +418,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 105
+          "latency_ms": 110
         },
         {
           "case_id": "eval-015",
@@ -443,7 +443,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 103
+          "latency_ms": 105
         },
         {
           "case_id": "eval-016",
@@ -468,7 +468,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 102
+          "latency_ms": 105
         },
         {
           "case_id": "eval-017",
@@ -516,7 +516,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 103
+          "latency_ms": 106
         },
         {
           "case_id": "eval-019",
@@ -537,7 +537,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 103
+          "latency_ms": 104
         },
         {
           "case_id": "eval-020",
@@ -562,7 +562,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 111
+          "latency_ms": 137
         },
         {
           "case_id": "eval-021",
@@ -587,7 +587,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 108
+          "latency_ms": 113
         },
         {
           "case_id": "eval-022",
@@ -614,7 +614,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 110
+          "latency_ms": 115
         },
         {
           "case_id": "eval-023",
@@ -709,7 +709,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 105
+          "latency_ms": 103
         },
         {
           "case_id": "eval-028",
@@ -730,7 +730,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 105
+          "latency_ms": 101
         },
         {
           "case_id": "eval-029",
@@ -755,7 +755,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 100
+          "latency_ms": 102
         },
         {
           "case_id": "eval-030",
@@ -782,7 +782,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 104
+          "latency_ms": 106
         },
         {
           "case_id": "eval-031",
@@ -807,7 +807,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 111
+          "latency_ms": 118
         },
         {
           "case_id": "eval-032",
@@ -832,7 +832,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 115
+          "latency_ms": 120
         },
         {
           "case_id": "eval-033",
@@ -925,7 +925,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 98
+          "latency_ms": 104
         },
         {
           "case_id": "eval-038",
@@ -946,7 +946,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 103
+          "latency_ms": 105
         },
         {
           "case_id": "eval-039",
@@ -967,7 +967,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 103
+          "latency_ms": 107
         },
         {
           "case_id": "eval-040",
@@ -994,7 +994,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 114
+          "latency_ms": 105
         },
         {
           "case_id": "eval-041",
@@ -1015,7 +1015,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 101
+          "latency_ms": 110
         },
         {
           "case_id": "eval-042",
@@ -1042,7 +1042,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 103
+          "latency_ms": 114
         }
       ]
     },
@@ -1055,9 +1055,9 @@
         "unauthorized_action_rate": 0.071,
         "hallucinated_tool_rate": 0.0,
         "exact_match_rate": 0.262,
-        "p50_latency_ms": 100,
-        "p95_latency_ms": 106,
-        "mean_latency_ms": 71.8
+        "p50_latency_ms": 105,
+        "p95_latency_ms": 111,
+        "mean_latency_ms": 75.6
       },
       "thresholds": {
         "tool_precision": 0.95,
@@ -1113,7 +1113,7 @@
           "passed": false
         },
         "p95_latency_ms": {
-          "actual": 106,
+          "actual": 111,
           "threshold": 250,
           "comparator": "<=",
           "passed": true
@@ -1143,7 +1143,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 165
+          "latency_ms": 180
         },
         {
           "case_id": "eval-002",
@@ -1169,7 +1169,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 101
+          "latency_ms": 102
         },
         {
           "case_id": "eval-003",
@@ -1214,7 +1214,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 100
+          "latency_ms": 110
         },
         {
           "case_id": "eval-005",
@@ -1237,7 +1237,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 100
+          "latency_ms": 104
         },
         {
           "case_id": "eval-006",
@@ -1279,7 +1279,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 103
+          "latency_ms": 109
         },
         {
           "case_id": "eval-008",
@@ -1302,7 +1302,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 100
+          "latency_ms": 109
         },
         {
           "case_id": "eval-009",
@@ -1327,7 +1327,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 100
+          "latency_ms": 102
         },
         {
           "case_id": "eval-010",
@@ -1353,7 +1353,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 101
+          "latency_ms": 109
         },
         {
           "case_id": "eval-011",
@@ -1420,7 +1420,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 100
+          "latency_ms": 108
         },
         {
           "case_id": "eval-014",
@@ -1441,7 +1441,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 103
+          "latency_ms": 111
         },
         {
           "case_id": "eval-015",
@@ -1466,7 +1466,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 99
+          "latency_ms": 102
         },
         {
           "case_id": "eval-016",
@@ -1491,7 +1491,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 100
+          "latency_ms": 105
         },
         {
           "case_id": "eval-017",
@@ -1576,7 +1576,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 104
+          "latency_ms": 111
         },
         {
           "case_id": "eval-021",
@@ -1711,7 +1711,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 102
+          "latency_ms": 109
         },
         {
           "case_id": "eval-028",
@@ -1732,7 +1732,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 101
+          "latency_ms": 106
         },
         {
           "case_id": "eval-029",
@@ -1757,7 +1757,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 99
+          "latency_ms": 104
         },
         {
           "case_id": "eval-030",
@@ -1781,7 +1781,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 106
+          "latency_ms": 113
         },
         {
           "case_id": "eval-031",
@@ -1804,7 +1804,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 104
+          "latency_ms": 109
         },
         {
           "case_id": "eval-032",
@@ -1829,7 +1829,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 100
+          "latency_ms": 106
         },
         {
           "case_id": "eval-033",
@@ -1848,7 +1848,7 @@
           "status": "ok",
           "task_success": false,
           "denied_by_policy": false,
-          "latency_ms": 104
+          "latency_ms": 107
         },
         {
           "case_id": "eval-034",
@@ -1869,7 +1869,7 @@
           "status": "ok",
           "task_success": false,
           "denied_by_policy": false,
-          "latency_ms": 103
+          "latency_ms": 105
         },
         {
           "case_id": "eval-035",
@@ -1907,7 +1907,7 @@
           "status": "ok",
           "task_success": false,
           "denied_by_policy": false,
-          "latency_ms": 104
+          "latency_ms": 105
         },
         {
           "case_id": "eval-037",
@@ -1932,7 +1932,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 99
+          "latency_ms": 107
         },
         {
           "case_id": "eval-038",
@@ -1955,7 +1955,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 106
+          "latency_ms": 110
         },
         {
           "case_id": "eval-039",
@@ -1978,7 +1978,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 100
+          "latency_ms": 105
         },
         {
           "case_id": "eval-040",
@@ -2002,7 +2002,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 101
+          "latency_ms": 108
         },
         {
           "case_id": "eval-041",
@@ -2025,7 +2025,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 103
+          "latency_ms": 106
         },
         {
           "case_id": "eval-042",
@@ -2049,7 +2049,7 @@
           "status": "ok",
           "task_success": true,
           "denied_by_policy": false,
-          "latency_ms": 104
+          "latency_ms": 109
         }
       ]
     }

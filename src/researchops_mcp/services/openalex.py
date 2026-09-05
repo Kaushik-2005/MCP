@@ -14,6 +14,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from researchops_mcp.observability import ObservabilityRegistry
 from researchops_mcp.security import DEFAULT_ALLOWED_OUTBOUND_DOMAINS, MAX_QUERY_CHARS, ensure_outbound_url_allowed
 
 BASE_URL = "https://api.openalex.org"
@@ -122,6 +123,7 @@ class OpenAlexClient:
         random_func: Callable[[], float] = random.random,
         time_func: Callable[[], float] = time.monotonic,
         circuit_breaker: CircuitBreaker | None = None,
+        observability: ObservabilityRegistry | None = None,
     ) -> None:
         self._mailto = mailto
         self._timeout_seconds = timeout_seconds
@@ -134,6 +136,7 @@ class OpenAlexClient:
         self._sleep_func = sleep_func
         self._random_func = random_func
         self._time_func = time_func
+        self._observability = observability
         self._circuit_breaker = circuit_breaker or CircuitBreaker(
             failure_threshold=circuit_breaker_failure_threshold,
             reset_timeout_seconds=circuit_breaker_reset_seconds,
@@ -213,7 +216,11 @@ class OpenAlexClient:
         while True:
             self._circuit_breaker.before_request()
             try:
-                payload = self._request_json(url)
+                if self._observability is None:
+                    payload = self._request_json(url)
+                else:
+                    with self._observability.observe("dependency", "openalex"):
+                        payload = self._request_json(url)
             except DependencyError:
                 self._circuit_breaker.record_failure()
                 if attempt >= self._retry_attempts:

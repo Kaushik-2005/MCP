@@ -4,7 +4,7 @@ ResearchOps MCP is a learning project for building a production-style Model Cont
 
 ## Current Status
 
-The project is in Day 12 of the roadmap as of September 4, 2026. The server supports local `stdio`, Streamable HTTP, Render staging deployment, authenticated multi-user access, security hardening, reliability controls for timeout budgets, retries, circuit breaking, cached paper fallback, Day 11 protocol workflow and metadata regression testing, and a Day 12 deterministic evaluation harness with threshold gating.
+The project is in Day 13 of the roadmap as of September 5, 2026. The server supports local `stdio`, Streamable HTTP, Render staging deployment, authenticated multi-user access, security hardening, reliability controls, deterministic evaluation with threshold gating, structured JSON logs, request IDs, in-process per-operation metrics, OpenTelemetry API spans, and HTTP health/readiness/metrics endpoints.
 
 ## Planned Capabilities
 
@@ -229,6 +229,46 @@ What Day 12 now verifies:
 - thresholded metrics for selection quality, argument correctness, refusal behavior, and latency
 - measurable regression impact when MCP tool descriptions are flattened into generic metadata
 - automated regression gating through `.github/workflows/evals.yml`
+
+## Day 13 Observability
+
+Run the focused observability tests:
+
+```powershell
+pytest tests/unit/test_observability.py
+```
+
+Run the broader CI-equivalent checks locally:
+
+```powershell
+python -m compileall src tests
+pytest
+python -m researchops_mcp.evals --fail-on-thresholds
+docker build -t researchops-mcp:day13 .
+```
+
+Start the HTTP server and inspect health and metrics:
+
+```powershell
+python src/server.py --transport streamable-http --host 127.0.0.1 --port 8765 --stateless-http
+```
+
+Then open these endpoints from another terminal or browser:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8765/healthz
+Invoke-RestMethod http://127.0.0.1:8765/readyz
+Invoke-RestMethod http://127.0.0.1:8765/metrics
+```
+
+What Day 13 now verifies:
+
+- structured JSON operation logs with sensitive fields redacted
+- `x-request-id` correlation headers on HTTP responses
+- per-tool, per-resource, per-prompt, HTTP, and OpenAlex dependency metrics
+- count, success/failure count, success/failure rate, mean latency, P50, P95, and P99 latency
+- OpenTelemetry API spans around observed operations, ready for a later exporter/collector setup
+- CI coverage for syntax checks, full tests, eval thresholding, and Docker image build
 
 
 ## Docker
